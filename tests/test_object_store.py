@@ -12,7 +12,9 @@ from safevault.paths import get_objects_dir
 
 
 def test_same_content_has_same_hash() -> None:
-    assert hash_bytes(b"same") == hash_bytes(b"same")
+    digest = hash_bytes(b"same")
+    assert digest == hash_bytes(b"same")
+    assert len(digest) == 64
 
 
 def test_same_content_stored_once_and_read_back(sv_home, tmp_path) -> None:

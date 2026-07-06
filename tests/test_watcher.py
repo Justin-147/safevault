@@ -49,4 +49,4 @@ def test_batch_deletion_warning_triggers_over_threshold(project) -> None:
     )
     for index in range(21):
         handler.note_event("deleted", project / f"{index}.txt", now=float(index))
-    assert warnings
+    assert warnings == ["High-risk warning: more than 20 delete events in 30 seconds"]

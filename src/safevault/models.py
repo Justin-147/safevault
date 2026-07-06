@@ -73,6 +73,27 @@ class SandboxRecord:
 
 
 @dataclass(frozen=True)
+class ApplyResult:
+    applied: int
+    deleted: int
+    skipped_deletions: list[str]
+    conflicts: list[str]
+    unsafe: list[str]
+    missing_sources: list[str]
+
+    def __iter__(self):
+        yield self.applied
+        yield self.deleted
+        yield self.skipped_deletions
+
+    @property
+    def has_skips(self) -> bool:
+        return bool(
+            self.skipped_deletions or self.conflicts or self.unsafe or self.missing_sources
+        )
+
+
+@dataclass(frozen=True)
 class DiffEntry:
     rel_path: str
     change_type: str

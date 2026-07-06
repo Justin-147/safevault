@@ -3,6 +3,7 @@
 .pip-cache/
 .tmp/
 .tmp-pip/
+.test-tmp/
 
 __pycache__/
 *.py[cod]

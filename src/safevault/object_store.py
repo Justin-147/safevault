@@ -4,12 +4,13 @@ import os
 import secrets
 import string
 from collections.abc import Iterator
+from contextlib import suppress
 from pathlib import Path
 from typing import BinaryIO
 
-from safevault.atomic import fsync_file
+from safevault.atomic import fsync_dir, fsync_file
 from safevault.errors import ObjectMissingError
-from safevault.hashing import hash_bytes, hash_file
+from safevault.hashing import hash_bytes, hash_file, new_hasher, symlink_payload
 from safevault.paths import ensure_home_layout, get_objects_dir, get_tmp_dir
 
 
@@ -37,6 +38,7 @@ def _store_payload(data: bytes, content_hash: str) -> str:
         final.parent.mkdir(parents=True, exist_ok=True)
         try:
             os.replace(tmp, final)
+            fsync_dir(final.parent)
         except FileExistsError:
             tmp.unlink(missing_ok=True)
     finally:
@@ -52,9 +54,32 @@ def store_bytes(data: bytes) -> str:
 def store_file(path: Path) -> str:
     if path.is_symlink():
         target = os.readlink(path)
-        return store_bytes(f"SYMLINK\n{target}".encode("utf-8", "surrogateescape"))
-    data = path.read_bytes()
-    return _store_payload(data, hash_bytes(data))
+        return store_bytes(symlink_payload(target))
+
+    ensure_home_layout()
+    hasher = new_hasher()
+    tmp = get_tmp_dir() / f".object.{secrets.token_hex(16)}.tmp"
+    try:
+        with path.open("rb") as src, tmp.open("wb") as dest:
+            for chunk in iter(lambda: src.read(1024 * 1024), b""):
+                hasher.update(chunk)
+                dest.write(chunk)
+            fsync_file(dest)
+        content_hash = hasher.hexdigest()
+        if hash_file(tmp) != content_hash:
+            raise ObjectMissingError("temporary object digest verification failed")
+        final = object_path(content_hash)
+        if final.exists():
+            tmp.unlink(missing_ok=True)
+            return content_hash
+        final.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(tmp, final)
+        fsync_dir(final.parent)
+        return content_hash
+    finally:
+        with suppress(OSError):
+            if tmp.exists():
+                tmp.unlink()
 
 
 def read_object(content_hash: str) -> bytes:

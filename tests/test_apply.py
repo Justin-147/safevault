@@ -78,9 +78,9 @@ def test_apply_refuses_to_delete_protected_paths(sv_home, project) -> None:
     protected = git_dir / "config"
     protected.write_text("do not delete", encoding="utf-8")
     sandbox_id = _manual_sandbox(project, DiffResult([DiffEntry(".git/config", "deleted", "file")]))
-    _, deleted, skipped = apply_sandbox(sandbox_id, allow_delete=True)
-    assert deleted == 0
-    assert skipped == [".git/config"]
+    result = apply_sandbox(sandbox_id, allow_delete=True)
+    assert result.deleted == 0
+    assert result.unsafe
     assert protected.exists()
 
 

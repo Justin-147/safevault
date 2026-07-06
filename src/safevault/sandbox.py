@@ -8,15 +8,23 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
-from safevault.atomic import atomic_write_bytes
-from safevault.config import PROTECTED_DELETE_NAMES
+from safevault.atomic import atomic_copy_file, atomic_write_bytes
 from safevault.db import connect, get_or_create_root, utc_now_iso
 from safevault.diffing import diff_dirs
 from safevault.errors import SafeVaultError, SandboxNotFoundError, UnsafeOperationError
+from safevault.hashing import hash_file, hash_path_no_follow, hash_symlink, symlink_payload
 from safevault.ignore import build_pathspec, is_ignored
-from safevault.models import DiffEntry, DiffResult, SandboxRecord
+from safevault.models import ApplyResult, DiffEntry, DiffResult, SandboxRecord
 from safevault.paths import ensure_home_layout, get_sandboxes_dir
+from safevault.safety import (
+    is_protected_rel_path,
+    safe_rel_path,
+    symlink_target_stays_within,
+    validate_apply_target,
+)
 from safevault.snapshot import create_snapshot, relative_path
+
+EXTERNAL_SYMLINK_MARKER = "SAFEVAULT_EXTERNAL_SYMLINK\n"
 
 
 def _sandbox_id() -> str:
@@ -24,12 +32,30 @@ def _sandbox_id() -> str:
     return f"{stamp}-{secrets.token_hex(4)}"
 
 
-def _copy_symlink(src: Path, dest: Path) -> None:
+def _resolved_link_target(link_path: Path, link_target: str) -> Path:
+    target = Path(link_target)
+    if os.path.isabs(link_target):
+        return target.resolve(strict=False)
+    return (link_path.parent / link_target).resolve(strict=False)
+
+
+def _copy_symlink(project: Path, sandbox_work: Path, src: Path, dest: Path) -> None:
     target = os.readlink(src)
+    if not symlink_target_stays_within(project, src, target):
+        atomic_write_bytes(
+            dest,
+            f"{EXTERNAL_SYMLINK_MARKER}{target}".encode("utf-8", "surrogateescape"),
+        )
+        return
+
+    resolved_target = _resolved_link_target(src, target)
+    target_rel = resolved_target.relative_to(project)
+    sandbox_target = sandbox_work / target_rel
+    sandbox_link_target = os.path.relpath(sandbox_target, dest.parent)
     try:
-        os.symlink(target, dest, target_is_directory=src.is_dir())
+        os.symlink(sandbox_link_target, dest, target_is_directory=src.is_dir())
     except (OSError, NotImplementedError):
-        dest.write_bytes(f"SYMLINK\n{target}".encode("utf-8", "surrogateescape"))
+        atomic_write_bytes(dest, symlink_payload(sandbox_link_target))
 
 
 def copy_project_to_sandbox(project: Path, sandbox_work: Path) -> None:
@@ -49,7 +75,7 @@ def copy_project_to_sandbox(project: Path, sandbox_work: Path) -> None:
                     dest = sandbox_work / Path(*PurePosixPath(rel).parts)
                     if entry.is_symlink():
                         dest.parent.mkdir(parents=True, exist_ok=True)
-                        _copy_symlink(src, dest)
+                        _copy_symlink(project, sandbox_work, src, dest)
                     elif entry.is_dir(follow_symlinks=False):
                         dest.mkdir(parents=True, exist_ok=True)
                         stack.append(src)
@@ -159,40 +185,44 @@ def _load_diff(sandbox: SandboxRecord) -> DiffResult:
     return DiffResult.from_dict(json.loads(diff_path.read_text(encoding="utf-8")))
 
 
-def _safe_rel(rel_path: str) -> Path:
-    rel = PurePosixPath(rel_path)
-    if rel.is_absolute() or ".." in rel.parts:
-        raise UnsafeOperationError(f"unsafe relative path in diff: {rel_path}")
-    return Path(*rel.parts)
-
-
-def _inside_root(root: Path, path: Path) -> bool:
-    root_resolved = root.resolve(strict=False)
-    candidate = path.resolve(strict=False)
-    return candidate == root_resolved or candidate.is_relative_to(root_resolved)
-
-
-def _is_protected_delete(root: Path, entry: DiffEntry) -> bool:
-    rel = PurePosixPath(entry.rel_path)
-    return bool(rel.parts and rel.parts[0] in PROTECTED_DELETE_NAMES) or is_ignored(
-        root, root / _safe_rel(entry.rel_path)
-    )
-
-
-def _copy_from_sandbox(source: Path, dest: Path) -> None:
+def _copy_from_sandbox(original: Path, source: Path, dest: Path) -> None:
     if source.is_symlink():
         target = os.readlink(source)
+        if not symlink_target_stays_within(original, dest, target):
+            raise UnsafeOperationError(f"refusing to apply external symlink: {dest}")
         if dest.exists() or dest.is_symlink():
             dest.unlink()
         try:
             os.symlink(target, dest)
         except (OSError, NotImplementedError):
-            atomic_write_bytes(dest, f"SYMLINK\n{target}".encode("utf-8", "surrogateescape"))
+            atomic_write_bytes(dest, symlink_payload(target))
         return
-    atomic_write_bytes(dest, source.read_bytes(), source.stat().st_mode & 0o777)
+    atomic_copy_file(source, dest, source.stat().st_mode & 0o777)
 
 
-def apply_sandbox(sandbox_id: str, allow_delete: bool = False) -> tuple[int, int, list[str]]:
+def _entry_source_hash(source: Path) -> str:
+    if source.is_symlink():
+        return hash_symlink(source)
+    return hash_file(source)
+
+
+def _validate_diff_entry(entry: DiffEntry) -> None:
+    if entry.change_type not in {"created", "modified", "deleted"}:
+        raise UnsafeOperationError(f"unknown change type: {entry.change_type}")
+    if entry.file_kind not in {"file", "symlink"}:
+        raise UnsafeOperationError(f"unknown file kind: {entry.file_kind}")
+    if is_protected_rel_path(entry.rel_path):
+        raise UnsafeOperationError(f"protected or ignored path in diff: {entry.rel_path}")
+    safe_rel_path(entry.rel_path)
+
+
+def _source_kind(source: Path) -> str:
+    return "symlink" if source.is_symlink() else "file"
+
+
+def apply_sandbox(
+    sandbox_id: str, allow_delete: bool = False, dry_run: bool = False
+) -> ApplyResult:
     sandbox = get_sandbox(sandbox_id)
     original = Path(sandbox.original_path)
     sandbox_work = Path(sandbox.sandbox_path)
@@ -205,42 +235,88 @@ def apply_sandbox(sandbox_id: str, allow_delete: bool = False) -> tuple[int, int
     applied = 0
     deleted = 0
     skipped_deletions: list[str] = []
+    conflicts: list[str] = []
+    unsafe: list[str] = []
+    missing_sources: list[str] = []
     try:
-        create_snapshot(original, reason="pre-apply")
+        if not dry_run:
+            create_snapshot(original, reason="pre-apply")
         for entry in diff.entries:
-            rel = _safe_rel(entry.rel_path)
-            dest = original / rel
-            source = sandbox_work / rel
-            if not _inside_root(original, dest):
-                raise UnsafeOperationError(f"destination escapes original root: {entry.rel_path}")
+            try:
+                _validate_diff_entry(entry)
+                dest = validate_apply_target(original, entry.rel_path)
+                rel = safe_rel_path(entry.rel_path)
+                source = sandbox_work / rel
+            except UnsafeOperationError as exc:
+                unsafe.append(f"{entry.rel_path}: {exc}")
+                continue
+
             if entry.change_type in {"created", "modified"}:
                 if not source.exists() and not source.is_symlink():
-                    raise SafeVaultError(f"sandbox source missing: {source}")
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                _copy_from_sandbox(source, dest)
+                    missing_sources.append(entry.rel_path)
+                    continue
+                if source.is_dir() and not source.is_symlink():
+                    unsafe.append(f"{entry.rel_path}: sandbox source is a directory")
+                    continue
+                if _source_kind(source) != entry.file_kind:
+                    unsafe.append(f"{entry.rel_path}: sandbox source kind mismatch")
+                    continue
+                if source.is_symlink() and not symlink_target_stays_within(
+                    original, dest, os.readlink(source)
+                ):
+                    unsafe.append(f"{entry.rel_path}: external symlink target")
+                    continue
+                if entry.new_hash is not None and _entry_source_hash(source) != entry.new_hash:
+                    unsafe.append(f"{entry.rel_path}: sandbox source hash mismatch")
+                    continue
+
+                if entry.change_type == "created" and (dest.exists() or dest.is_symlink()):
+                    conflicts.append(entry.rel_path)
+                    continue
+                if entry.change_type == "modified":
+                    if not dest.exists() and not dest.is_symlink():
+                        conflicts.append(entry.rel_path)
+                        continue
+                    if entry.old_hash is None or hash_path_no_follow(dest) != entry.old_hash:
+                        conflicts.append(entry.rel_path)
+                        continue
+
+                if not dry_run:
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    _copy_from_sandbox(original, source, dest)
                 applied += 1
             elif entry.change_type == "deleted":
                 if not allow_delete:
                     skipped_deletions.append(entry.rel_path)
                     continue
-                if _is_protected_delete(original, entry):
+                if not dest.exists() and not dest.is_symlink():
                     skipped_deletions.append(entry.rel_path)
                     continue
-                if dest.is_file() or dest.is_symlink():
+                if dest.is_dir() and not dest.is_symlink():
+                    unsafe.append(f"{entry.rel_path}: refusing to delete directory")
+                    continue
+                if entry.old_hash is None or hash_path_no_follow(dest) != entry.old_hash:
+                    conflicts.append(entry.rel_path)
+                    continue
+                if not dry_run:
                     dest.unlink()
-                    deleted += 1
-                elif dest.is_dir():
-                    try:
-                        dest.rmdir()
-                        deleted += 1
-                    except OSError:
-                        skipped_deletions.append(entry.rel_path)
-                else:
-                    skipped_deletions.append(entry.rel_path)
-        update_sandbox_status(
-            sandbox_id, "partially_applied" if skipped_deletions else "applied"
+                deleted += 1
+
+        result = ApplyResult(
+            applied=applied,
+            deleted=deleted,
+            skipped_deletions=skipped_deletions,
+            conflicts=conflicts,
+            unsafe=unsafe,
+            missing_sources=missing_sources,
         )
-        return applied, deleted, skipped_deletions
+        if not dry_run:
+            if applied or deleted:
+                create_snapshot(original, reason="post-apply")
+            status = "partially_applied" if result.has_skips else "applied"
+            update_sandbox_status(sandbox_id, status)
+        return result
     except Exception:
-        update_sandbox_status(sandbox_id, "failed")
+        if not dry_run:
+            update_sandbox_status(sandbox_id, "failed")
         raise

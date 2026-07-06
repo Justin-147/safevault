@@ -6,7 +6,9 @@ from safevault.db import connect
 from safevault.object_store import iter_object_hashes, object_path
 
 
-def prune_unreferenced_objects(keep_days: int = 60, max_size: str = "50GB") -> tuple[int, int]:
+def prune_unreferenced_objects(
+    keep_days: int = 60, max_size: str = "50GB", dry_run: bool = False
+) -> tuple[int, int]:
     _ = (keep_days, max_size)
     conn = connect()
     try:
@@ -27,10 +29,12 @@ def prune_unreferenced_objects(keep_days: int = 60, max_size: str = "50GB") -> t
         path = object_path(content_hash)
         if path.is_file():
             size = path.stat().st_size
-            path.unlink()
+            if not dry_run:
+                path.unlink()
             deleted += 1
             reclaimed += size
-            _remove_empty_parents(path)
+            if not dry_run:
+                _remove_empty_parents(path)
     return deleted, reclaimed
 
 

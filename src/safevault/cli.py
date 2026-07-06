@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from datetime import UTC, datetime
 from functools import wraps
 from pathlib import Path
-from typing import Annotated, TypeVar
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -24,10 +25,9 @@ from safevault.watcher import watch_roots
 
 console = Console()
 app = typer.Typer(no_args_is_help=True)
-F = TypeVar("F", bound=Callable[..., object])
 
 
-def handle_errors(func: F) -> F:
+def handle_errors[F: Callable[..., object]](func: F) -> F:
     @wraps(func)
     def wrapper(*args: object, **kwargs: object) -> object:
         try:
@@ -184,12 +184,24 @@ def run(
 @app.command()
 @handle_errors
 def apply(sandbox_id: str, allow_delete: bool = typer.Option(False, "--allow-delete")) -> None:
-    applied, deleted_count, skipped = apply_sandbox(sandbox_id, allow_delete=allow_delete)
-    console.print(f"Applied files: {applied}")
-    console.print(f"Deleted files: {deleted_count}")
-    if skipped:
+    result = apply_sandbox(sandbox_id, allow_delete=allow_delete)
+    console.print(f"Applied files: {result.applied}")
+    console.print(f"Deleted files: {result.deleted}")
+    if result.skipped_deletions:
         console.print("Skipped deletions:")
-        for rel_path in skipped:
+        for rel_path in result.skipped_deletions:
+            console.print(f"- {rel_path}")
+    if result.conflicts:
+        console.print("Conflicts:")
+        for rel_path in result.conflicts:
+            console.print(f"- {rel_path}")
+    if result.unsafe:
+        console.print("Unsafe entries:")
+        for rel_path in result.unsafe:
+            console.print(f"- {rel_path}")
+    if result.missing_sources:
+        console.print("Missing sandbox sources:")
+        for rel_path in result.missing_sources:
             console.print(f"- {rel_path}")
 
 
@@ -198,33 +210,33 @@ def apply(sandbox_id: str, allow_delete: bool = typer.Option(False, "--allow-del
 def prune(
     keep_days: int = typer.Option(60, "--keep-days"),
     max_size: str = typer.Option("50GB", "--max-size"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
-    deleted_count, reclaimed = prune_unreferenced_objects(keep_days=keep_days, max_size=max_size)
+    deleted_count, reclaimed = prune_unreferenced_objects(
+        keep_days=keep_days, max_size=max_size, dry_run=dry_run
+    )
+    if dry_run:
+        console.print("Dry run: no objects deleted")
     console.print(f"Deleted objects: {deleted_count}")
     console.print(f"Reclaimed bytes: {reclaimed}")
 
 
 @app.command()
 @handle_errors
-def doctor() -> None:
+def doctor(json_output: bool = typer.Option(False, "--json")) -> None:
     result = run_doctor()
-    if result.missing_tables:
-        console.print("Missing tables/directories:")
-        for item in result.missing_tables:
-            console.print(f"- {item}")
-    if result.missing_objects:
-        console.print("Missing referenced objects:")
-        for item in result.missing_objects:
-            console.print(f"- {item}")
-    if result.orphan_objects:
-        console.print(f"Orphan objects: {len(result.orphan_objects)}")
-    if result.temp_files:
-        console.print(f"Temp or partial files: {len(result.temp_files)}")
-    if result.missing_roots:
-        console.print("Missing roots:")
-        for item in result.missing_roots:
-            console.print(f"- {item}")
-    console.print("SafeVault healthy" if result.healthy else "SafeVault unhealthy")
+    if json_output:
+        console.print(json.dumps(result.to_dict(), indent=2))
+    else:
+        if result.error_items:
+            console.print("ERROR:")
+            for item in result.error_items:
+                console.print(f"- {item}")
+        if result.warning_items:
+            console.print("WARN:")
+            for item in result.warning_items:
+                console.print(f"- {item}")
+        console.print("SafeVault healthy" if result.healthy else "SafeVault unhealthy")
     if not result.healthy:
         raise typer.Exit(1)
 

@@ -141,6 +141,8 @@ def restore_file(
             (root.id, rel_path, utc_now_iso()),
         )
         conn.commit()
+        if target_root is not None:
+            create_snapshot(Path(target_root.path), reason="post-restore")
         return target
     finally:
         conn.close()

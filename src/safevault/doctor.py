@@ -23,6 +23,36 @@ class DoctorResult:
     temp_files: list[str]
     missing_roots: list[str]
     missing_tables: list[str]
+    sandbox_warnings: list[str]
+
+    @property
+    def error_items(self) -> list[str]:
+        return [
+            *(f"missing referenced object: {item}" for item in self.missing_objects),
+            *(f"missing table/directory: {item}" for item in self.missing_tables),
+            *(f"missing root: {item}" for item in self.missing_roots),
+        ]
+
+    @property
+    def warning_items(self) -> list[str]:
+        return [
+            *(f"orphan object: {item}" for item in self.orphan_objects),
+            *(f"temp or partial file: {item}" for item in self.temp_files),
+            *self.sandbox_warnings,
+        ]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "healthy": self.healthy,
+            "errors": self.error_items,
+            "warnings": self.warning_items,
+            "missing_objects": self.missing_objects,
+            "orphan_objects": self.orphan_objects,
+            "temp_files": self.temp_files,
+            "missing_roots": self.missing_roots,
+            "missing_tables": self.missing_tables,
+            "sandbox_warnings": self.sandbox_warnings,
+        }
 
 
 REQUIRED_TABLES = {"roots", "files", "snapshots", "versions", "events", "sandboxes"}
@@ -73,6 +103,11 @@ def run_doctor() -> DoctorResult:
         for path in root.rglob("*")
         if path.is_file() and path.name.endswith((".tmp", ".partial"))
     ]
+    sandbox_warnings = [
+        f"sandbox without diff.json: {path}"
+        for path in get_sandboxes_dir().iterdir()
+        if path.is_dir() and not (path / "diff.json").is_file()
+    ] if get_sandboxes_dir().exists() else []
     healthy = not missing_objects and not missing_tables and not missing_roots
     return DoctorResult(
         healthy=healthy,
@@ -81,4 +116,5 @@ def run_doctor() -> DoctorResult:
         temp_files=temp_files,
         missing_roots=missing_roots,
         missing_tables=missing_tables,
+        sandbox_warnings=sandbox_warnings,
     )

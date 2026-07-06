@@ -26,7 +26,7 @@ def default_patterns() -> list[str]:
 
 
 def build_pathspec(patterns: Sequence[str] | None = None) -> pathspec.PathSpec:
-    return pathspec.PathSpec.from_lines("gitwildmatch", patterns or default_patterns())
+    return pathspec.PathSpec.from_lines("gitignore", patterns or default_patterns())
 
 
 def rel_for_match(root: Path, path: Path) -> str:

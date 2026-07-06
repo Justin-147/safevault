@@ -2,13 +2,24 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
 
 from safevault import object_store
 from safevault.db import connect, get_or_create_root, utc_now_iso
 from safevault.errors import SafeVaultError
+from safevault.hashing import symlink_payload
 from safevault.ignore import build_pathspec, is_ignored
 from safevault.paths import ensure_home_layout
+
+
+@dataclass(frozen=True)
+class CapturedEntry:
+    file_kind: str
+    content_hash: str
+    size: int
+    mtime_ns: int
+    mode: int
 
 
 def relative_path(root: Path, path: Path) -> str:
@@ -145,19 +156,47 @@ def _insert_version(
 
 
 def _symlink_payload(path: Path) -> bytes:
-    return f"SYMLINK\n{os.readlink(path)}".encode("utf-8", "surrogateescape")
+    return symlink_payload(os.readlink(path))
 
 
-def _scan_entry(path: Path, file_kind: str) -> tuple[str, int, int, int]:
-    stat_result = path.lstat()
-    mode = int(stat_result.st_mode)
-    mtime_ns = int(stat_result.st_mtime_ns)
-    if file_kind == "symlink":
-        payload = _symlink_payload(path)
-        content_hash = object_store.store_bytes(payload)
-        return content_hash, len(payload), mtime_ns, mode
-    content_hash = object_store.store_file(path)
-    return content_hash, int(stat_result.st_size), mtime_ns, mode
+def _stat_signature(stat_result: os.stat_result) -> tuple[int, int, int | None, int | None]:
+    inode = getattr(stat_result, "st_ino", None)
+    dev = getattr(stat_result, "st_dev", None)
+    return int(stat_result.st_size), int(stat_result.st_mtime_ns), inode, dev
+
+
+def capture_entry_stable(
+    path: Path, file_kind: str, max_retries: int = 2
+) -> CapturedEntry | None:
+    for _attempt in range(max_retries + 1):
+        before = path.lstat()
+        mode = int(before.st_mode)
+        if file_kind == "symlink":
+            payload = _symlink_payload(path)
+            after = path.lstat()
+            if _stat_signature(before) != _stat_signature(after):
+                continue
+            content_hash = object_store.store_bytes(payload)
+            return CapturedEntry(
+                file_kind=file_kind,
+                content_hash=content_hash,
+                size=len(payload),
+                mtime_ns=int(after.st_mtime_ns),
+                mode=mode,
+            )
+
+        content_hash = object_store.store_file(path)
+        after = path.lstat()
+        if _stat_signature(before) != _stat_signature(after):
+            continue
+        return CapturedEntry(
+            file_kind=file_kind,
+            content_hash=content_hash,
+            size=int(after.st_size),
+            mtime_ns=int(after.st_mtime_ns),
+            mode=mode,
+        )
+    return None
 
 
 def create_snapshot(path: Path, reason: str = "manual", profile: str = "coding") -> int:
@@ -193,7 +232,6 @@ def create_snapshot(path: Path, reason: str = "manual", profile: str = "coding")
             else:
                 size = stat_result.st_size
             mtime_ns = int(stat_result.st_mtime_ns)
-            mode = int(stat_result.st_mode)
             existing = _get_file(conn, root_id, rel_path)
 
             if (
@@ -209,16 +247,19 @@ def create_snapshot(path: Path, reason: str = "manual", profile: str = "coding")
                 )
                 continue
 
-            content_hash, size, mtime_ns, mode = _scan_entry(item_path, file_kind)
+            captured = capture_entry_stable(item_path, file_kind)
+            if captured is None:
+                _insert_event(conn, root_id, "unstable", rel_path)
+                continue
             file_id = _upsert_file(
                 conn,
                 root_id=root_id,
                 rel_path=rel_path,
                 file_kind=file_kind,
-                current_hash=content_hash,
-                size=size,
-                mtime_ns=mtime_ns,
-                mode=mode,
+                current_hash=captured.content_hash,
+                size=captured.size,
+                mtime_ns=captured.mtime_ns,
+                mode=captured.mode,
                 last_seen_at=utc_now_iso(),
             )
 
@@ -226,7 +267,7 @@ def create_snapshot(path: Path, reason: str = "manual", profile: str = "coding")
             if (
                 existing
                 and existing["status"] == "active"
-                and existing["current_hash"] == content_hash
+                and existing["current_hash"] == captured.content_hash
             ):
                 should_version = False
             if should_version:
@@ -235,16 +276,16 @@ def create_snapshot(path: Path, reason: str = "manual", profile: str = "coding")
                     file_id=file_id,
                     snapshot_id=snapshot_id,
                     rel_path=rel_path,
-                    content_hash=content_hash,
-                    size=size,
-                    mtime_ns=mtime_ns,
-                    mode=mode,
+                    content_hash=captured.content_hash,
+                    size=captured.size,
+                    mtime_ns=captured.mtime_ns,
+                    mode=captured.mode,
                 )
                 if existing is None:
                     _insert_event(conn, root_id, "created", rel_path)
                 elif existing["status"] == "deleted":
                     _insert_event(conn, root_id, "restored", rel_path)
-                elif existing["current_hash"] != content_hash:
+                elif existing["current_hash"] != captured.content_hash:
                     _insert_event(conn, root_id, "modified", rel_path)
 
         active_rows = conn.execute(

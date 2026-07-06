@@ -51,7 +51,7 @@ class SafeVaultEventHandler(FileSystemEventHandler):
                 ]
                 if len(self.delete_times) > 20:
                     self.warn_func(
-                        "High-risk warning: more than 20 tracked files deleted in 30 seconds"
+                        "High-risk warning: more than 20 delete events in 30 seconds"
                     )
             if now is None:
                 self._schedule_timer()

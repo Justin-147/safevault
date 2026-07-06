@@ -7,6 +7,8 @@ from pathlib import Path
 from safevault.models import Root
 from safevault.paths import ensure_home_layout, get_db_path
 
+SCHEMA_VERSION = 1
+
 
 def utc_now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="microseconds")
@@ -17,6 +19,8 @@ def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
     init_schema(conn)
     return conn
 
@@ -92,8 +96,18 @@ def init_schema(conn: sqlite3.Connection) -> None:
             status TEXT NOT NULL,
             FOREIGN KEY(root_id) REFERENCES roots(id)
         );
+
+        CREATE INDEX IF NOT EXISTS idx_files_root_rel ON files(root_id, rel_path);
+        CREATE INDEX IF NOT EXISTS idx_versions_file_id ON versions(file_id);
+        CREATE INDEX IF NOT EXISTS idx_versions_content_hash ON versions(content_hash);
+        CREATE INDEX IF NOT EXISTS idx_events_root_type_time
+            ON events(root_id, event_type, detected_at);
+        CREATE INDEX IF NOT EXISTS idx_snapshots_root_time ON snapshots(root_id, started_at);
         """
     )
+    version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    if version < SCHEMA_VERSION:
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     conn.commit()
 
 

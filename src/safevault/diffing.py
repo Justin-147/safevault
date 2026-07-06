@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import cast
 
-from safevault.hashing import hash_bytes, hash_file
+from safevault.hashing import hash_file, hash_symlink_target, symlink_payload
 from safevault.ignore import build_pathspec, is_ignored
 from safevault.models import DiffEntry, DiffResult
 from safevault.snapshot import relative_path
@@ -17,8 +17,8 @@ def _size(entry: ManifestEntry) -> int:
 
 
 def _symlink_hash(path: Path) -> tuple[str, int]:
-    payload = f"SYMLINK\n{os.readlink(path)}".encode("utf-8", "surrogateescape")
-    return hash_bytes(payload), len(payload)
+    target = os.readlink(path)
+    return hash_symlink_target(target), len(symlink_payload(target))
 
 
 def build_manifest(root: Path) -> dict[str, ManifestEntry]:

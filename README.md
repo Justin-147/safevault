@@ -1,14 +1,25 @@
 # SafeVault
 
-SafeVault is a local file-protection and recovery tool. It records selected
-directories in SQLite, stores file content in a content-addressed object store,
-tracks versions and deletions, restores files from captured snapshots, and runs
-risky commands in a disposable sandbox copy of a project.
+SafeVault is a local file-protection and recovery tool for project directories.
+It captures versioned snapshots, stores file content in a BLAKE3-addressed
+object store, records file versions and deletion markers in SQLite, restores
+captured versions, and runs risky commands in a disposable project copy.
 
-SafeVault v1 does not perform raw disk recovery. It cannot recover files that
-were never captured by a SafeVault snapshot. Raw disk recovery is intentionally
-out of scope because it is platform-specific, destructive when done poorly, and
-requires permissions and filesystem behavior that a safe MVP should not assume.
+SafeVault can restore only versions that were already captured by SafeVault
+snapshots. It is not a replacement for system backups or off-machine backups.
+
+## What It Does Not Do
+
+SafeVault v1 does not perform raw disk recovery and does not parse NTFS, APFS,
+ext4, btrfs, ZFS, or other filesystem internals. Raw disk recovery is
+platform-specific and easy to make destructive, so this project only restores
+content already present in SafeVault's own object store.
+
+`safevault run` protects the original project directory from accidental
+modifications by running commands in a copied working tree. It is not a hardened
+security sandbox for malicious code. Commands can still access the user's
+filesystem, network, environment variables, and credentials unless the operating
+system or an external container blocks them.
 
 ## Install
 
@@ -25,54 +36,95 @@ Windows PowerShell:
 pip install -e .[dev]
 ```
 
-## Basic Usage
+SafeVault requires Python 3.12 and the `blake3` package.
+
+## Quickstart
 
 ```bash
 safevault init ~/Projects/myapp
-safevault snapshot ~/Projects/myapp --reason manual
+safevault snapshot ~/Projects/myapp --reason initial
 safevault versions ~/Projects/myapp/file.py
 safevault restore ~/Projects/myapp/file.py --latest
 ```
 
-## Sandbox Usage
-
-```bash
-safevault run --project ~/Projects/myapp -- codex
-safevault apply <sandbox-id>
-safevault apply <sandbox-id> --allow-delete
-```
-
-`safevault run` copies the project into `SAFEVAULT_HOME/sandboxes` and runs the
-command there. The original project directory is not modified. `safevault apply`
-copies created and modified files back to the original project. Deletions are
-skipped by default and require `--allow-delete`.
-
-## SafeVault Home
-
-SafeVault stores metadata under `~/.safevault` by default:
-
-```text
-vault.db
-objects/
-logs/
-sandboxes/
-tmp/
-```
-
-Set `SAFEVAULT_HOME` to use another location, which is especially useful in
-tests:
+By default SafeVault stores data in `~/.safevault`. Set `SAFEVAULT_HOME` to use
+another location:
 
 ```bash
 SAFEVAULT_HOME=/tmp/safevault-test safevault doctor
 ```
 
-## Limitations
+## Snapshots And Restore
 
-- No raw disk recovery in v1.
-- Recovery is limited to content already captured in SafeVault snapshots.
-- The watcher is best-effort and triggers full snapshots after debounced events.
-- Prune is conservative and only deletes objects not referenced by any version.
-- Symlinks are recorded by link target text and are never followed.
+Snapshots walk the protected root without following symlinks, skip ignored
+paths, stream file content into the object store, and record file versions in
+SQLite. Files that disappear between snapshots receive deletion markers.
+
+Restore can restore the latest non-deleted version or a specific version id:
+
+```bash
+safevault restore ~/Projects/myapp/file.py --latest
+safevault restore ~/Projects/myapp/file.py --version 12
+safevault restore ~/Projects/myapp/file.py --version 12 --to /tmp/file.py
+```
+
+Before overwriting a protected file, SafeVault snapshots the current protected
+root. After restoring inside a protected root, it snapshots again so metadata
+reflects the restored content.
+
+## Sandbox Workflow
+
+```bash
+safevault run --project ~/Projects/myapp -- codex
+safevault sandboxes --latest
+safevault apply <sandbox-id>
+safevault apply <sandbox-id> --allow-delete
+```
+
+`safevault run` snapshots the project, copies it to
+`SAFEVAULT_HOME/sandboxes/<sandbox-id>/work`, runs the command there, and writes
+`diff.json`. The original project is not modified by `run`.
+
+External symlinks are not preserved as active symlinks in the sandbox. If a
+project symlink points outside the protected root, SafeVault writes a regular
+placeholder file instead, preventing sandbox commands from writing through that
+link to outside files. Internal symlinks are preserved only when they still
+resolve inside the sandbox copy.
+
+## Apply Behavior
+
+`safevault apply` treats `diff.json` as untrusted input. It validates relative
+paths, rejects absolute or parent-escaping paths, rejects protected and ignored
+paths for all change types, validates file kinds and hashes, and refuses unsafe
+symlinks.
+
+Created and modified files are copied back with atomic replace. Deletions are
+skipped unless `--allow-delete` is explicitly passed. Even with `--allow-delete`,
+SafeVault never deletes protected paths such as `.git`, `.safevault`,
+`node_modules`, `.venv`, `venv`, `dist`, `build`, or `target`.
+
+SafeVault also detects conflicts. If the original project changed after
+`safevault run`, apply skips that entry instead of overwriting user work. After
+successful writes or deletions, SafeVault snapshots the original project with
+reason `post-apply`.
+
+## Doctor And Prune
+
+```bash
+safevault doctor
+safevault doctor --json
+safevault prune --dry-run
+safevault prune
+```
+
+Doctor reports ERROR-level integrity problems such as missing referenced
+objects, missing required tables, and missing registered roots. WARN-level
+findings include orphan objects, temp files, and incomplete sandbox directories;
+warnings are visible but not fatal.
+
+Prune is conservative. It deletes only object-store files that look like valid
+content hashes and are not referenced by any version. It never deletes the
+database, logs, temp root, sandboxes, or invalid object filenames.
 
 ## Validation
 
@@ -82,3 +134,11 @@ mypy src
 pytest -q
 python -m safevault --help
 ```
+
+## Limitations
+
+- No raw disk recovery.
+- Recovery is limited to previously captured snapshots.
+- `safevault run` is not a hardened malicious-code sandbox.
+- The watcher is best-effort and snapshots remain the source of recovery.
+- Prune only deletes unreferenced content objects.
