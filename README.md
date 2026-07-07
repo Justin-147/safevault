@@ -1,9 +1,13 @@
-# SafeVault
+﻿# SafeVault
 
 [![CI](https://github.com/Justin-147/safevault/actions/workflows/ci.yml/badge.svg)](https://github.com/Justin-147/safevault/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Justin-147/safevault?include_prereleases&label=release)](https://github.com/Justin-147/safevault/releases)
+[![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
+[![GUI](https://img.shields.io/badge/GUI-FastAPI-009688.svg)](README.md#graphical-ui)
+[![Docs](https://img.shields.io/badge/docs-%E4%B8%AD%E6%96%87-blue.svg)](README.zh-CN.md)
+[![Status](https://img.shields.io/badge/status-rc1-orange.svg)](CHANGELOG.md)
 
 Chinese documentation: [README.zh-CN.md](README.zh-CN.md)
-
 SafeVault is a local file-protection and recovery tool for project directories.
 It captures versioned snapshots, stores file content in a BLAKE3-addressed
 object store, records file versions and deletion markers in SQLite, restores
@@ -310,3 +314,4 @@ Release checklist for `v0.1.0-rc1`:
 - The watcher is best-effort and snapshots remain the source of recovery.
 - Retention is planning-only in this release candidate.
 - Prune only deletes unreferenced content objects.
+
