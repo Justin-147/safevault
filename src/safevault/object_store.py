@@ -15,8 +15,12 @@ from safevault.paths import ensure_home_layout, get_objects_dir, get_tmp_dir
 from safevault.symlinks import symlink_payload
 
 
+def is_valid_content_hash(value: str) -> bool:
+    return _looks_like_hash(value)
+
+
 def validate_content_hash(value: str) -> None:
-    if not _looks_like_hash(value):
+    if not is_valid_content_hash(value):
         raise SafeVaultError(f"invalid content hash: {value!r}")
 
 
@@ -39,6 +43,13 @@ def verify_object(content_hash: str) -> bool:
         return False
 
 
+def existing_object_is_valid(content_hash: str) -> bool:
+    try:
+        return verify_object(content_hash)
+    except SafeVaultError:
+        return False
+
+
 def _require_verified_object(content_hash: str) -> Path:
     path = object_path(content_hash)
     if not path.is_file():
@@ -51,7 +62,7 @@ def _require_verified_object(content_hash: str) -> Path:
 def _store_payload(data: bytes, content_hash: str) -> str:
     ensure_home_layout()
     final = object_path(content_hash)
-    if final.exists():
+    if final.exists() and existing_object_is_valid(content_hash):
         return content_hash
 
     tmp = get_tmp_dir() / f".{content_hash}.{secrets.token_hex(8)}.tmp"
@@ -62,11 +73,8 @@ def _store_payload(data: bytes, content_hash: str) -> str:
         if hash_file(tmp) != content_hash:
             raise ObjectMissingError("temporary object digest verification failed")
         final.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            os.replace(tmp, final)
-            fsync_dir(final.parent)
-        except FileExistsError:
-            tmp.unlink(missing_ok=True)
+        os.replace(tmp, final)
+        fsync_dir(final.parent)
     finally:
         if tmp.exists():
             tmp.unlink(missing_ok=True)
@@ -95,7 +103,7 @@ def store_file(path: Path) -> str:
         if hash_file(tmp) != content_hash:
             raise ObjectMissingError("temporary object digest verification failed")
         final = object_path(content_hash)
-        if final.exists():
+        if final.exists() and existing_object_is_valid(content_hash):
             tmp.unlink(missing_ok=True)
             return content_hash
         final.parent.mkdir(parents=True, exist_ok=True)

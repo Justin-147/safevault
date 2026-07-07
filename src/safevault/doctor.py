@@ -4,7 +4,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from safevault.db import connect
-from safevault.object_store import iter_object_hashes, object_path, verify_object
+from safevault.object_store import (
+    is_valid_content_hash,
+    iter_object_hashes,
+    object_path,
+    verify_object,
+)
 from safevault.paths import (
     ensure_home_layout,
     get_logs_dir,
@@ -20,6 +25,7 @@ class DoctorResult:
     healthy: bool
     missing_objects: list[str]
     corrupted_objects: list[str]
+    invalid_references: list[str]
     orphan_objects: list[str]
     temp_files: list[str]
     missing_roots: list[str]
@@ -31,6 +37,7 @@ class DoctorResult:
         return [
             *(f"missing referenced object: {item}" for item in self.missing_objects),
             *(f"corrupted referenced object: {item}" for item in self.corrupted_objects),
+            *(f"invalid referenced object hash: {item}" for item in self.invalid_references),
             *(f"missing table/directory: {item}" for item in self.missing_tables),
             *(f"missing root: {item}" for item in self.missing_roots),
         ]
@@ -50,6 +57,7 @@ class DoctorResult:
             "warnings": self.warning_items,
             "missing_objects": self.missing_objects,
             "corrupted_objects": self.corrupted_objects,
+            "invalid_references": self.invalid_references,
             "orphan_objects": self.orphan_objects,
             "temp_files": self.temp_files,
             "missing_roots": self.missing_roots,
@@ -61,7 +69,7 @@ class DoctorResult:
 REQUIRED_TABLES = {"roots", "files", "snapshots", "versions", "events", "sandboxes"}
 
 
-def run_doctor() -> DoctorResult:
+def run_doctor(*, deep: bool = False) -> DoctorResult:
     ensure_home_layout()
     conn = connect()
     try:
@@ -76,16 +84,26 @@ def run_doctor() -> DoctorResult:
                 "SELECT DISTINCT content_hash FROM versions WHERE content_hash IS NOT NULL"
             ).fetchall()
         }
-        missing_objects = sorted(
-            content_hash for content_hash in referenced if not object_path(content_hash).is_file()
+        invalid_references = sorted(
+            content_hash for content_hash in referenced if not is_valid_content_hash(content_hash)
         )
-        corrupted_objects = sorted(
+        valid_referenced = referenced - set(invalid_references)
+        missing_objects = sorted(
             content_hash
-            for content_hash in referenced
-            if content_hash not in missing_objects and not verify_object(content_hash)
+            for content_hash in valid_referenced
+            if not object_path(content_hash).is_file()
+        )
+        corrupted_objects = (
+            sorted(
+                content_hash
+                for content_hash in valid_referenced
+                if content_hash not in missing_objects and not verify_object(content_hash)
+            )
+            if deep
+            else []
         )
         disk_objects = set(iter_object_hashes())
-        orphan_objects = sorted(disk_objects - referenced)
+        orphan_objects = sorted(disk_objects - valid_referenced)
         missing_roots = [
             str(row["path"])
             for row in conn.execute("SELECT path FROM roots ORDER BY path").fetchall()
@@ -119,6 +137,7 @@ def run_doctor() -> DoctorResult:
     healthy = (
         not missing_objects
         and not corrupted_objects
+        and not invalid_references
         and not missing_tables
         and not missing_roots
     )
@@ -126,6 +145,7 @@ def run_doctor() -> DoctorResult:
         healthy=healthy,
         missing_objects=missing_objects,
         corrupted_objects=corrupted_objects,
+        invalid_references=invalid_references,
         orphan_objects=orphan_objects,
         temp_files=temp_files,
         missing_roots=missing_roots,

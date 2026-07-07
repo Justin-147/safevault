@@ -21,3 +21,4 @@ jobs:
       - run: mypy src
       - run: pytest -q
       - run: python -m safevault --help
+      - run: bash scripts/smoke.sh

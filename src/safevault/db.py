@@ -4,6 +4,7 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
+from safevault.errors import SafeVaultError
 from safevault.models import Root
 from safevault.paths import ensure_home_layout, get_db_path
 
@@ -26,6 +27,12 @@ def connect() -> sqlite3.Connection:
 
 
 def init_schema(conn: sqlite3.Connection) -> None:
+    create_base_schema_if_missing(conn)
+    migrate(conn)
+    conn.commit()
+
+
+def create_base_schema_if_missing(conn: sqlite3.Connection) -> None:
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS roots (
@@ -105,10 +112,24 @@ def init_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_snapshots_root_time ON snapshots(root_id, started_at);
         """
     )
-    version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+
+
+def get_user_version(conn: sqlite3.Connection) -> int:
+    return int(conn.execute("PRAGMA user_version").fetchone()[0])
+
+
+def set_user_version(conn: sqlite3.Connection, version: int) -> None:
+    conn.execute(f"PRAGMA user_version = {version}")
+
+
+def migrate(conn: sqlite3.Connection) -> None:
+    version = get_user_version(conn)
+    if version > SCHEMA_VERSION:
+        raise SafeVaultError(
+            f"database schema version {version} is newer than supported {SCHEMA_VERSION}"
+        )
     if version < SCHEMA_VERSION:
-        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-    conn.commit()
+        set_user_version(conn, SCHEMA_VERSION)
 
 
 def _root_from_row(row: sqlite3.Row | None) -> Root | None:

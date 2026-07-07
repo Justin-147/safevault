@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from safevault.cli import app
 from safevault.object_store import object_path, store_bytes
 from safevault.prune import prune_unreferenced_objects
@@ -36,6 +38,15 @@ def test_prune_cli_dry_run_uses_would_wording(runner, sv_home) -> None:
     assert "Would delete objects" in result.output
     assert "Would reclaim bytes" in result.output
     assert "Deleted objects" not in result.output
+
+
+def test_prune_cli_dry_run_json(runner, sv_home) -> None:
+    store_bytes(b"orphan")
+    result = runner.invoke(app, ["prune", "--dry-run", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["dry_run"] is True
+    assert data["objects"] == 1
 
 
 def _first_content_hash() -> str:

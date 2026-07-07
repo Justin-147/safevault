@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import wraps
 from pathlib import Path
@@ -23,10 +24,12 @@ from safevault.db import (
 from safevault.doctor import run_doctor
 from safevault.durations import parse_duration
 from safevault.errors import FileNotTrackedError, RootNotFoundError, SafeVaultError
+from safevault.exporter import export_vault
 from safevault.object_store import iter_object_hashes, object_path
 from safevault.paths import ensure_home_layout, get_sandboxes_dir
 from safevault.prune import prune_unreferenced_objects
 from safevault.restore import restore_file
+from safevault.retention import build_retention_plan
 from safevault.sandbox import apply_sandbox, create_sandbox, list_sandboxes
 from safevault.snapshot import create_snapshot, relative_path
 from safevault.verify import run_verify
@@ -34,6 +37,35 @@ from safevault.watcher import watch_roots
 
 console = Console()
 app = typer.Typer(no_args_is_help=True)
+
+SAFE_SANDBOX_CLEAN_STATUSES = {"applied"}
+
+
+def print_json(data: object) -> None:
+    print(json.dumps(data, indent=2))
+
+
+@dataclass(frozen=True)
+class UnprotectPlan:
+    root_id: int
+    root_path: str
+    files: int
+    versions: int
+    snapshots: int
+    events: int
+    sandboxes: int
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "root_id": self.root_id,
+            "root_path": self.root_path,
+            "files": self.files,
+            "versions": self.versions,
+            "snapshots": self.snapshots,
+            "events": self.events,
+            "sandboxes": self.sandboxes,
+            "object_store_deleted": False,
+        }
 
 
 def handle_errors[F: Callable[..., object]](func: F) -> F:
@@ -231,10 +263,20 @@ def prune(
     keep_days: int = typer.Option(60, "--keep-days"),
     max_size: str = typer.Option("50GB", "--max-size"),
     dry_run: bool = typer.Option(False, "--dry-run"),
+    json_output: bool = typer.Option(False, "--json"),
 ) -> None:
     deleted_count, reclaimed = prune_unreferenced_objects(
         keep_days=keep_days, max_size=max_size, dry_run=dry_run
     )
+    if json_output:
+        print_json(
+            {
+                "dry_run": dry_run,
+                "objects": deleted_count,
+                "bytes": reclaimed,
+            }
+        )
+        return
     if dry_run:
         console.print(f"Would delete objects: {deleted_count}")
         console.print(f"Would reclaim bytes: {reclaimed}")
@@ -245,8 +287,25 @@ def prune(
 
 @app.command()
 @handle_errors
-def verify(deep: bool = typer.Option(False, "--deep")) -> None:
+def verify(
+    deep: bool = typer.Option(False, "--deep"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
     result = run_verify(deep=deep)
+    if json_output:
+        print_json(
+            {
+                "healthy": result.healthy,
+                "deep": result.deep,
+                "checked_objects": result.checked_objects,
+                "missing_objects": result.missing_objects,
+                "corrupted_objects": result.corrupted_objects,
+                "invalid_references": result.invalid_references,
+            }
+        )
+        if not result.healthy:
+            raise typer.Exit(1)
+        return
     mode = "deep" if deep else "fast"
     console.print(f"Verify mode: {mode}")
     console.print(f"Referenced objects checked: {result.checked_objects}")
@@ -258,6 +317,10 @@ def verify(deep: bool = typer.Option(False, "--deep")) -> None:
         console.print("Corrupted objects:")
         for content_hash in result.corrupted_objects:
             console.print(f"- {content_hash}")
+    if result.invalid_references:
+        console.print("Invalid references:")
+        for content_hash in result.invalid_references:
+            console.print(f"- {content_hash}")
     console.print("SafeVault verify healthy" if result.healthy else "SafeVault verify failed")
     if not result.healthy:
         raise typer.Exit(1)
@@ -265,10 +328,13 @@ def verify(deep: bool = typer.Option(False, "--deep")) -> None:
 
 @app.command()
 @handle_errors
-def doctor(json_output: bool = typer.Option(False, "--json")) -> None:
-    result = run_doctor()
+def doctor(
+    json_output: bool = typer.Option(False, "--json"),
+    deep: bool = typer.Option(False, "--deep"),
+) -> None:
+    result = run_doctor(deep=deep)
     if json_output:
-        console.print(json.dumps(result.to_dict(), indent=2))
+        print_json(result.to_dict())
     else:
         if result.error_items:
             console.print("ERROR:")
@@ -285,7 +351,7 @@ def doctor(json_output: bool = typer.Option(False, "--json")) -> None:
 
 @app.command()
 @handle_errors
-def status(path: Path) -> None:
+def status(path: Path, json_output: bool = typer.Option(False, "--json")) -> None:
     conn = connect()
     try:
         requested = path.expanduser().resolve(strict=False)
@@ -332,6 +398,25 @@ def status(path: Path) -> None:
         if doctor_result.healthy
         else f"errors={len(doctor_result.error_items)} warnings={len(doctor_result.warning_items)}"
     )
+    data = {
+        "protected_root": root.path,
+        "root_id": root.id,
+        "last_snapshot": None if latest_snapshot is None else str(latest_snapshot["started_at"]),
+        "tracked_active_files": active_count,
+        "tracked_deleted_files": deleted_count,
+        "object_store_size": object_store_size,
+        "latest_sandbox": None
+        if latest_sandbox is None
+        else {
+            "id": str(latest_sandbox["id"]),
+            "status": str(latest_sandbox["status"]),
+            "created_at": str(latest_sandbox["created_at"]),
+        },
+        "health": health,
+    }
+    if json_output:
+        print_json(data)
+        return
     table = Table("Field", "Value")
     table.add_row("Protected root", root.path)
     table.add_row("Root id", str(root.id))
@@ -354,8 +439,26 @@ def status(path: Path) -> None:
 
 @app.command()
 @handle_errors
-def sandboxes(latest: bool = typer.Option(False, "--latest")) -> None:
+def sandboxes(
+    latest: bool = typer.Option(False, "--latest"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
     rows = list_sandboxes(latest=latest)
+    if json_output:
+        print_json(
+            [
+                {
+                    "id": row.id,
+                    "root_id": row.root_id,
+                    "original_path": row.original_path,
+                    "sandbox_path": row.sandbox_path,
+                    "created_at": row.created_at,
+                    "status": row.status,
+                }
+                for row in rows
+            ]
+        )
+        return
     table = Table("ID", "Original", "Created", "Status")
     for row in rows:
         table.add_row(row.id, row.original_path, row.created_at, row.status)
@@ -364,12 +467,25 @@ def sandboxes(latest: bool = typer.Option(False, "--latest")) -> None:
 
 @app.command(name="roots")
 @handle_errors
-def roots_command() -> None:
+def roots_command(json_output: bool = typer.Option(False, "--json")) -> None:
     conn = connect()
     try:
         rows = list_roots(conn)
     finally:
         conn.close()
+    data = [
+        {
+            "id": root.id,
+            "path": root.path,
+            "profile": root.profile,
+            "created_at": root.created_at,
+            "exists": Path(root.path).exists(),
+        }
+        for root in rows
+    ]
+    if json_output:
+        print_json(data)
+        return
     console.print("ID\tPath\tProfile\tCreated\tExists")
     for root in rows:
         console.print(
@@ -380,30 +496,36 @@ def roots_command() -> None:
 
 @app.command()
 @handle_errors
-def unprotect(path: Path) -> None:
+def unprotect(
+    path: Path,
+    confirm: bool = typer.Option(False, "--confirm"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
     requested = path.expanduser().resolve(strict=False)
     conn = connect()
     try:
         root = get_root_by_path(conn, requested)
         if root is None:
             raise RootNotFoundError("path is not a protected root")
-        conn.execute("DELETE FROM events WHERE root_id = ?", (root.id,))
-        conn.execute(
-            """
-            DELETE FROM versions
-            WHERE file_id IN (SELECT id FROM files WHERE root_id = ?)
-               OR snapshot_id IN (SELECT id FROM snapshots WHERE root_id = ?)
-            """,
-            (root.id, root.id),
-        )
-        conn.execute("DELETE FROM files WHERE root_id = ?", (root.id,))
-        conn.execute("DELETE FROM snapshots WHERE root_id = ?", (root.id,))
-        conn.execute("DELETE FROM sandboxes WHERE root_id = ?", (root.id,))
-        conn.execute("DELETE FROM roots WHERE id = ?", (root.id,))
-        conn.commit()
+        plan = _plan_unprotect(conn, root.id, root.path)
+        if not confirm or dry_run:
+            if json_output:
+                print_json(plan.to_dict() | {"dry_run": True})
+                if not dry_run and not confirm:
+                    raise typer.Exit(1)
+                return
+            _print_unprotect_plan(plan)
+            if not dry_run and not confirm:
+                raise SafeVaultError("unprotect requires --confirm or --dry-run")
+            return
+        _execute_unprotect(conn, root.id)
     finally:
         conn.close()
-    console.print(f"Unprotected root {root.id}: {root.path}")
+    if json_output:
+        print_json(plan.to_dict() | {"dry_run": False})
+    else:
+        console.print(f"Unprotected root {plan.root_id}: {plan.root_path}")
 
 
 @app.command(name="sandbox-clean")
@@ -412,7 +534,16 @@ def sandbox_clean(
     older_than: str = typer.Option("30d", "--older-than"),
     status: str = typer.Option("applied", "--status"),
     dry_run: bool = typer.Option(False, "--dry-run"),
+    confirm: bool = typer.Option(False, "--confirm"),
+    include_non_applied: bool = typer.Option(False, "--include-non-applied"),
+    json_output: bool = typer.Option(False, "--json"),
 ) -> None:
+    if status not in SAFE_SANDBOX_CLEAN_STATUSES and not include_non_applied:
+        raise SafeVaultError(
+            "sandbox-clean only cleans applied sandboxes by default; "
+            "pass --include-non-applied for other statuses"
+        )
+    effective_dry_run = dry_run or not confirm
     cutoff = datetime.now(UTC) - parse_duration(older_than)
     sandboxes_root = get_sandboxes_dir().resolve(strict=False)
     conn = connect()
@@ -427,23 +558,74 @@ def sandbox_clean(
             if _parse_iso_datetime(str(row["created_at"])) < cutoff
         ]
         cleaned = 0
+        skipped = 0
         for row in selected:
             sandbox_dir = Path(str(row["sandbox_path"])).parent.resolve(strict=False)
             if not (
-                sandbox_dir == sandboxes_root
-                or sandbox_dir.is_relative_to(sandboxes_root)
+                sandbox_dir != sandboxes_root
+                and sandbox_dir.is_relative_to(sandboxes_root)
             ):
+                skipped += 1
                 continue
-            if not dry_run:
-                shutil.rmtree(sandbox_dir, ignore_errors=True)
+            if sandbox_dir.exists() and (
+                sandbox_dir.is_symlink() or not sandbox_dir.is_dir()
+            ):
+                skipped += 1
+                continue
+            if not effective_dry_run:
+                if sandbox_dir.exists():
+                    shutil.rmtree(sandbox_dir)
                 conn.execute("DELETE FROM sandboxes WHERE id = ?", (row["id"],))
             cleaned += 1
-        if not dry_run:
+        if not effective_dry_run:
             conn.commit()
     finally:
         conn.close()
-    verb = "Would clean sandboxes" if dry_run else "Cleaned sandboxes"
+    data = {
+        "dry_run": effective_dry_run,
+        "status": status,
+        "older_than": older_than,
+        "matched": len(selected),
+        "cleaned": cleaned,
+        "skipped": skipped,
+    }
+    if json_output:
+        print_json(data)
+        return
+    if effective_dry_run and not dry_run:
+        console.print("Dry run by default; pass --confirm to delete matching sandboxes")
+    verb = "Would clean sandboxes" if effective_dry_run else "Cleaned sandboxes"
     console.print(f"{verb}: {cleaned}")
+    if skipped:
+        console.print(f"Skipped sandboxes: {skipped}")
+
+
+@app.command()
+@handle_errors
+def export(
+    output: Annotated[Path, typer.Option("--output")],
+    gzip: bool = typer.Option(False, "--gzip"),
+    allow_inside_vault: bool = typer.Option(False, "--allow-inside-vault"),
+) -> None:
+    result = export_vault(
+        output=output, gzip=gzip, allow_inside_vault=allow_inside_vault
+    )
+    console.print(f"Exported vault: {result.output}")
+    console.print(f"Objects exported: {result.object_count}")
+
+
+@app.command(name="retention-plan")
+@handle_errors
+def retention_plan(
+    keep_days: int = typer.Option(90, "--keep-days"),
+    verbose: bool = typer.Option(False, "--verbose"),
+) -> None:
+    result = build_retention_plan(keep_days=keep_days)
+    console.print(f"Candidate versions: {len(result.candidate_versions)}")
+    console.print(f"Candidate snapshots: {len(result.candidate_snapshots)}")
+    if verbose:
+        for item in result.candidate_versions:
+            console.print(f"- version {item.version_id}: {item.rel_path}")
 
 
 def _object_store_size() -> int:
@@ -462,6 +644,72 @@ def _parse_iso_datetime(value: str) -> datetime:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
+
+
+def _plan_unprotect(conn, root_id: int, root_path: str) -> UnprotectPlan:
+    files = int(
+        conn.execute("SELECT COUNT(*) FROM files WHERE root_id = ?", (root_id,)).fetchone()[0]
+    )
+    versions = int(
+        conn.execute(
+            """
+            SELECT COUNT(*) FROM versions
+            WHERE file_id IN (SELECT id FROM files WHERE root_id = ?)
+               OR snapshot_id IN (SELECT id FROM snapshots WHERE root_id = ?)
+            """,
+            (root_id, root_id),
+        ).fetchone()[0]
+    )
+    snapshots = int(
+        conn.execute(
+            "SELECT COUNT(*) FROM snapshots WHERE root_id = ?", (root_id,)
+        ).fetchone()[0]
+    )
+    events = int(
+        conn.execute("SELECT COUNT(*) FROM events WHERE root_id = ?", (root_id,)).fetchone()[0]
+    )
+    sandboxes_count = int(
+        conn.execute(
+            "SELECT COUNT(*) FROM sandboxes WHERE root_id = ?", (root_id,)
+        ).fetchone()[0]
+    )
+    return UnprotectPlan(
+        root_id=root_id,
+        root_path=root_path,
+        files=files,
+        versions=versions,
+        snapshots=snapshots,
+        events=events,
+        sandboxes=sandboxes_count,
+    )
+
+
+def _execute_unprotect(conn, root_id: int) -> None:
+    with conn:
+        conn.execute("DELETE FROM events WHERE root_id = ?", (root_id,))
+        conn.execute(
+            """
+            DELETE FROM versions
+            WHERE file_id IN (SELECT id FROM files WHERE root_id = ?)
+               OR snapshot_id IN (SELECT id FROM snapshots WHERE root_id = ?)
+            """,
+            (root_id, root_id),
+        )
+        conn.execute("DELETE FROM files WHERE root_id = ?", (root_id,))
+        conn.execute("DELETE FROM snapshots WHERE root_id = ?", (root_id,))
+        conn.execute("DELETE FROM sandboxes WHERE root_id = ?", (root_id,))
+        conn.execute("DELETE FROM roots WHERE id = ?", (root_id,))
+
+
+def _print_unprotect_plan(plan: UnprotectPlan) -> None:
+    console.print(f"Root id: {plan.root_id}")
+    console.print(f"Root path: {plan.root_path}")
+    console.print(f"Files rows: {plan.files}")
+    console.print(f"Version rows: {plan.versions}")
+    console.print(f"Snapshot rows: {plan.snapshots}")
+    console.print(f"Event rows: {plan.events}")
+    console.print(f"Sandbox rows: {plan.sandboxes}")
+    console.print("Object-store content files will not be deleted")
 
 
 def main() -> None:

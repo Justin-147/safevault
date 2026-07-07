@@ -1,5 +1,7 @@
 # SafeVault
 
+[![CI](https://github.com/Justin-147/safevault/actions/workflows/ci.yml/badge.svg)](https://github.com/Justin-147/safevault/actions/workflows/ci.yml)
+
 SafeVault is a local file-protection and recovery tool for project directories.
 It captures versioned snapshots, stores file content in a BLAKE3-addressed
 object store, records file versions and deletion markers in SQLite, restores
@@ -148,6 +150,7 @@ rejected before hashing or copying.
 
 ```bash
 safevault doctor
+safevault doctor --deep
 safevault doctor --json
 safevault verify
 safevault verify --deep
@@ -156,13 +159,15 @@ safevault prune
 ```
 
 Doctor reports ERROR-level integrity problems such as missing referenced
-objects, corrupted referenced objects, missing required tables, and missing
-registered roots. WARN-level findings include orphan objects, temp files, and
-incomplete sandbox directories; warnings are visible but not fatal.
+objects, invalid referenced object hashes, missing required tables, and missing
+registered roots. `doctor --deep` also recomputes referenced object hashes and
+may be slow on large vaults. WARN-level findings include orphan objects, temp
+files, and incomplete sandbox directories; warnings are visible but not fatal.
 
 `safevault verify` performs a fast referenced-object check. `safevault verify
---deep` recomputes hashes for referenced objects and exits nonzero if any
-referenced object is missing or corrupted.
+--deep` is the dedicated full integrity check; it recomputes hashes for
+referenced objects and exits nonzero if any referenced object is missing,
+invalid, or corrupted.
 
 Prune is conservative. It deletes only object-store files that look like valid
 content hashes and are not referenced by any version. It never deletes the
@@ -175,16 +180,24 @@ removing files.
 ```bash
 safevault roots
 safevault status ~/Projects/myapp
-safevault unprotect ~/Projects/myapp
-safevault sandbox-clean --older-than 30d --status applied
+safevault unprotect ~/Projects/myapp --dry-run
+safevault unprotect ~/Projects/myapp --confirm
+safevault sandbox-clean --older-than 30d --status applied --dry-run
+safevault sandbox-clean --older-than 30d --status applied --confirm
+safevault export --output /tmp/safevault-export.tar.gz --gzip
+safevault retention-plan --keep-days 90
 ```
 
 `roots` lists registered protected roots. `status` shows root metadata, latest
 snapshot, tracked active/deleted counts, object-store size, latest sandbox, and
-health summary. `unprotect` removes SafeVault database metadata for an exact
-registered root but does not delete project files or content objects.
-`sandbox-clean` removes only sandbox directories matching both age and status
-filters.
+health summary. `unprotect` is destructive metadata cleanup, so it requires
+`--confirm`; `--dry-run` prints row counts and object-store content files are not
+deleted. `sandbox-clean` defaults to dry-run and removes only sandbox
+directories matching both age and status filters when `--confirm` is passed.
+`export` writes a vault archive containing `vault.db`, `objects/`, and a
+manifest, excluding temp files and sandbox work directories. `retention-plan`
+is non-destructive and reports old versions that a future retention policy could
+remove.
 
 ## Validation
 

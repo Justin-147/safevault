@@ -92,6 +92,16 @@ def test_nonzero_command_still_records_sandbox_metadata(sv_home, project) -> Non
     assert row["status"] == "command_failed"
 
 
+def test_sandboxes_json_output(runner, sv_home, project) -> None:
+    sandbox_id, _, _, _ = create_sandbox(project, [sys.executable, "-c", "print('ok')"])
+    from safevault.cli import app
+
+    result = runner.invoke(app, ["sandboxes", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data[0]["id"] == sandbox_id
+
+
 def _sandbox_work(sandbox_id: str) -> Path:
     conn = connect()
     try:

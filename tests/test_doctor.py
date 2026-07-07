@@ -26,9 +26,44 @@ def test_doctor_reports_corrupted_referenced_object(sv_home, project) -> None:
     create_snapshot(project)
     digest = _first_content_hash()
     object_path(digest).write_text("corrupt", encoding="utf-8")
-    result = run_doctor()
+    result = run_doctor(deep=True)
     assert not result.healthy
     assert digest in result.corrupted_objects
+
+
+def test_doctor_fast_does_not_rehash_existing_objects(sv_home, project, monkeypatch) -> None:
+    path = project / "a.txt"
+    path.write_text("tracked", encoding="utf-8")
+    create_snapshot(project)
+
+    def fail_verify(_content_hash: str) -> bool:
+        raise AssertionError("fast doctor should not verify object content")
+
+    monkeypatch.setattr("safevault.doctor.verify_object", fail_verify)
+    result = run_doctor()
+    assert result.healthy
+    assert result.corrupted_objects == []
+
+
+def test_doctor_reports_invalid_reference(sv_home, project) -> None:
+    path = project / "a.txt"
+    path.write_text("tracked", encoding="utf-8")
+    create_snapshot(project)
+    _set_first_content_hash("not-a-hash")
+    result = run_doctor()
+    assert not result.healthy
+    assert result.invalid_references == ["not-a-hash"]
+
+
+def test_doctor_json_includes_invalid_references(runner, sv_home, project) -> None:
+    path = project / "a.txt"
+    path.write_text("tracked", encoding="utf-8")
+    create_snapshot(project)
+    _set_first_content_hash("not-a-hash")
+    result = runner.invoke(app, ["doctor", "--json"])
+    assert result.exit_code == 1
+    data = json.loads(result.output)
+    assert data["invalid_references"] == ["not-a-hash"]
 
 
 def test_doctor_reports_orphan_object_warning(sv_home) -> None:
@@ -61,5 +96,16 @@ def _first_content_hash() -> str:
     conn = connect()
     try:
         return str(conn.execute("SELECT content_hash FROM versions").fetchone()["content_hash"])
+    finally:
+        conn.close()
+
+
+def _set_first_content_hash(value: str) -> None:
+    from safevault.db import connect
+
+    conn = connect()
+    try:
+        conn.execute("UPDATE versions SET content_hash = ? WHERE id = 1", (value,))
+        conn.commit()
     finally:
         conn.close()

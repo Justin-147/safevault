@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import sqlite3
+
+import pytest
+
 from safevault.db import connect, find_containing_root, get_or_create_root, get_root_by_path
+from safevault.errors import SafeVaultError
+from safevault.paths import ensure_home_layout, get_db_path
 
 
 def test_schema_initializes(sv_home) -> None:
@@ -40,3 +46,15 @@ def test_containing_root_lookup(sv_home, project) -> None:
         conn.close()
     assert root is not None
     assert root.id == root_id
+
+
+def test_future_schema_version_fails_clearly(sv_home) -> None:
+    ensure_home_layout()
+    raw = sqlite3.connect(get_db_path())
+    try:
+        raw.execute("PRAGMA user_version = 999")
+        raw.commit()
+    finally:
+        raw.close()
+    with pytest.raises(SafeVaultError, match="newer than supported"):
+        connect()

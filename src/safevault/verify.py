@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from safevault.db import connect
-from safevault.object_store import object_path, verify_object
+from safevault.object_store import is_valid_content_hash, object_path, verify_object
 from safevault.paths import ensure_home_layout
 
 
@@ -11,12 +11,17 @@ from safevault.paths import ensure_home_layout
 class VerifyResult:
     missing_objects: list[str]
     corrupted_objects: list[str]
+    invalid_references: list[str]
     checked_objects: int
     deep: bool
 
     @property
     def healthy(self) -> bool:
-        return not self.missing_objects and not self.corrupted_objects
+        return (
+            not self.missing_objects
+            and not self.corrupted_objects
+            and not self.invalid_references
+        )
 
 
 def run_verify(*, deep: bool = False) -> VerifyResult:
@@ -36,7 +41,11 @@ def run_verify(*, deep: bool = False) -> VerifyResult:
 
     missing: list[str] = []
     corrupted: list[str] = []
+    invalid: list[str] = []
     for content_hash in referenced:
+        if not is_valid_content_hash(content_hash):
+            invalid.append(content_hash)
+            continue
         path = object_path(content_hash)
         if not path.is_file():
             missing.append(content_hash)
@@ -45,6 +54,7 @@ def run_verify(*, deep: bool = False) -> VerifyResult:
     return VerifyResult(
         missing_objects=missing,
         corrupted_objects=corrupted,
+        invalid_references=invalid,
         checked_objects=len(referenced),
         deep=deep,
     )

@@ -41,3 +41,26 @@ def test_partial_temp_files_are_not_valid_objects(sv_home) -> None:
     (bad / ("a" * 64 + ".tmp")).write_text("x", encoding="utf-8")
     (bad / ("b" * 64 + ".partial")).write_text("x", encoding="utf-8")
     assert list(iter_object_hashes()) == []
+
+
+def test_store_bytes_repairs_corrupted_existing_object(sv_home) -> None:
+    digest = store_bytes(b"repair me")
+    object_path(digest).write_bytes(b"corrupt")
+    assert store_bytes(b"repair me") == digest
+    assert read_object(digest) == b"repair me"
+
+
+def test_store_file_repairs_corrupted_existing_object(sv_home, tmp_path) -> None:
+    path = tmp_path / "payload.txt"
+    path.write_bytes(b"file payload")
+    digest = store_file(path)
+    object_path(digest).write_bytes(b"corrupt")
+    assert store_file(path) == digest
+    assert read_object(digest) == b"file payload"
+
+
+def test_corrupted_existing_object_is_not_reused_silently(sv_home) -> None:
+    digest = store_bytes(b"payload")
+    object_path(digest).write_bytes(b"corrupt")
+    store_bytes(b"payload")
+    assert object_path(digest).read_bytes() == b"payload"
