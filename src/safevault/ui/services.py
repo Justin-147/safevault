@@ -338,8 +338,15 @@ def list_versions_for_file(path: Path) -> list[VersionEntry]:
 
 
 def restore_from_ui(
-    file: Path, *, latest: bool, version_id: int | None, to_path: Path | None
+    file: Path,
+    *,
+    latest: bool,
+    version_id: int | None,
+    to_path: Path | None,
+    confirmation: str,
 ) -> Path:
+    if confirmation != "RESTORE":
+        raise SafeVaultError("type RESTORE to confirm restore")
     return restore_file(file, latest=latest, version_id=version_id, to_path=to_path)
 
 
@@ -412,11 +419,18 @@ def prune_from_ui(*, dry_run: bool, confirmation: str = "") -> tuple[int, int]:
 
 
 def sandbox_clean_from_ui(
-    *, dry_run: bool, confirm: bool, status: str = "applied", older_than: str = "30d"
+    *,
+    dry_run: bool,
+    confirm: bool,
+    status: str = "applied",
+    older_than: str = "30d",
+    confirmation: str = "",
 ) -> dict[str, object]:
     if status != "applied":
         raise SafeVaultError("GUI sandbox-clean only supports status=applied")
     effective_dry_run = dry_run or not confirm
+    if not effective_dry_run and confirmation != "CLEAN SANDBOXES":
+        raise SafeVaultError("type CLEAN SANDBOXES to confirm sandbox cleanup")
     cutoff = datetime.now(UTC) - parse_duration(older_than)
     sandboxes_root = get_sandboxes_dir().resolve(strict=False)
     conn = connect()
@@ -468,7 +482,13 @@ def export_from_ui(
     overwrite: bool,
     skip_verify: bool,
     allow_inside_vault: bool,
+    overwrite_confirmation: str,
+    skip_verify_confirmation: str,
 ) -> ExportResult:
+    if overwrite and overwrite_confirmation != "OVERWRITE EXPORT":
+        raise SafeVaultError("type OVERWRITE EXPORT to confirm export overwrite")
+    if skip_verify and skip_verify_confirmation != "SKIP VERIFY":
+        raise SafeVaultError("type SKIP VERIFY to confirm export without verification")
     return export_vault(
         output=output,
         gzip=gzip,

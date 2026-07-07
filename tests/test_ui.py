@@ -124,7 +124,7 @@ def test_ui_versions_restore_and_deleted_page(sv_home: Path, project: Path) -> N
 
         restored = client.post(
             "/restore",
-            data={"file": str(file_path), "mode": "latest"},
+            data={"file": str(file_path), "mode": "latest", "confirmation": "RESTORE"},
         )
         assert restored.status_code == 200
         assert "Restored to" in restored.text

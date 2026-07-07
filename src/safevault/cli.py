@@ -664,6 +664,7 @@ def ui_command(
     port: int = typer.Option(8765, "--port", min=1, max=65535),
     open_browser: bool = typer.Option(False, "--open"),
     allow_public_bind: bool = typer.Option(False, "--allow-public-bind"),
+    test_token: Annotated[str | None, typer.Option("--test-token", hidden=True)] = None,
 ) -> None:
     if host not in LOCAL_UI_HOSTS and not allow_public_bind:
         raise SafeVaultError(
@@ -683,7 +684,7 @@ def ui_command(
             raise SafeVaultError("Install UI dependencies with: pip install -e '.[ui]'") from exc
         raise
 
-    token = secrets.token_urlsafe(32)
+    token = test_token or secrets.token_urlsafe(32)
     url = f"http://{host}:{port}/?token={token}"
     console.print("SafeVault local UI")
     console.print("Local UI only. Not a remote admin console.")

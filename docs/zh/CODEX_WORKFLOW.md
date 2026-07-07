@@ -25,6 +25,8 @@ safevault apply <sandbox-id> --allow-delete
 
 GUI 中 apply with delete 也必须输入 `ALLOW DELETE`。
 
+如果需要从 GUI 恢复 Codex 修改前的版本，恢复表单必须输入 `RESTORE`。这不是额外绕过保护，而是对写入操作的防误点确认。
+
 ## GUI 审查 diff
 
 打开：
@@ -34,4 +36,3 @@ safevault ui --open
 ```
 
 进入 Sandboxes 页面，查看 created、modified、deleted 条目，再执行 dry-run。
-

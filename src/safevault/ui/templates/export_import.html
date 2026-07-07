@@ -7,7 +7,9 @@
     <label>Output path <input name="output" required></label>
     <label><input type="checkbox" name="gzip" value="true"> gzip</label>
     <label><input type="checkbox" name="overwrite" value="true"> overwrite</label>
+    <input name="overwrite_confirmation" placeholder="type OVERWRITE EXPORT">
     <label><input type="checkbox" name="skip_verify" value="true"> skip verify (not recommended)</label>
+    <input name="skip_verify_confirmation" placeholder="type SKIP VERIFY">
     <label><input type="checkbox" name="allow_inside_vault" value="true"> allow inside SAFEVAULT_HOME</label>
     <button type="submit">Export</button>
   </form>
@@ -29,4 +31,3 @@
   {% if import_result %}<p>Import {{ "dry-run" if import_result.dry_run else "complete" }}: {{ import_result.object_count }} objects, target {{ import_result.target_home }}</p>{% endif %}
 </section>
 {% endblock %}
-

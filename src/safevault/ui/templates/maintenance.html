@@ -15,9 +15,9 @@
   </form>
   <form method="post" action="/maintenance">
     <input type="hidden" name="action" value="sandbox-clean-confirm">
+    <input name="confirmation" placeholder="type CLEAN SANDBOXES">
     <button type="submit">Sandbox Clean Confirm (applied only)</button>
   </form>
 </section>
 {% if result %}<pre>{{ result }}</pre>{% endif %}
 {% endblock %}
-

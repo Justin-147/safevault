@@ -65,7 +65,7 @@ Windows PowerShell:
 
 ```powershell
 .venv\Scripts\Activate.ps1
-pip install -e .[dev]
+pip install -e .[dev,ui]
 ```
 
 SafeVault requires Python 3.12 and the `blake3` package.
@@ -79,6 +79,17 @@ safevault ui --open
 The UI binds to `127.0.0.1` by default and uses a random token printed at
 startup. It is a local convenience UI, not a remote admin console. Do not expose
 it to public networks.
+
+High-risk GUI actions require typed confirmation words: `RESTORE`,
+`ALLOW DELETE`, `PRUNE`, `CLEAN SANDBOXES`, `OVERWRITE EXPORT`,
+`SKIP VERIFY`, `IMPORT`, and `OVERWRITE`. The GUI calls the same backend safety
+logic as the CLI.
+
+The release check includes a real local HTTP smoke test:
+
+```bash
+bash scripts/gui_smoke.sh
+```
 
 ## Quickstart
 

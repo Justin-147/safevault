@@ -34,3 +34,6 @@ Git 保护提交历史；SafeVault 保护本地文件快照，包括未提交文
 
 GUI 调用现有后端安全函数，不绕过 dry-run、confirm、apply 删除确认和 restore 保护。
 
+## Q: 为什么 GUI 要输入这些英文确认词？
+
+`RESTORE`、`ALLOW DELETE`、`PRUNE`、`CLEAN SANDBOXES`、`OVERWRITE EXPORT`、`SKIP VERIFY`、`IMPORT`、`OVERWRITE` 都对应会写入、删除、覆盖或导入数据的操作。确认词可以降低误点风险。

@@ -9,6 +9,8 @@ safevault deleted --since 24h
 safevault restore /path/to/file --latest
 ```
 
+如果使用 GUI，恢复按钮仍需要输入 `RESTORE`，避免误点直接写回文件。
+
 ## 2. Codex 删除了一批文件
 
 先查看 sandbox diff：
@@ -18,6 +20,7 @@ safevault apply <sandbox-id> --dry-run
 ```
 
 默认 apply 会跳过删除。确认需要删除时才使用 `--allow-delete`。
+GUI 中应用删除必须输入 `ALLOW DELETE`。
 
 ## 3. apply 后发现覆盖了内容
 
@@ -44,4 +47,3 @@ safevault import --input safevault-export.tar.gz --target-home /new/safevault-ho
 ## 6. 目录里有 symlink
 
 SafeVault 不跟随指向受保护 root 外部的 symlink。sandbox 中外部 symlink 会变成 placeholder，并由 sidecar metadata 识别。
-

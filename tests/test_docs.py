@@ -36,3 +36,37 @@ def test_readme_links_chinese_documentation() -> None:
     assert "README.zh-CN.md" in readme
     assert "docs/zh/GUI_GUIDE.md" in chinese_readme
     assert "docs/zh/RECOVERY_PLAYBOOK.md" in chinese_readme
+
+
+def test_chinese_readme_has_required_command_and_status_terms() -> None:
+    root = Path(__file__).resolve().parents[1]
+    text = (root / "README.zh-CN.md").read_text(encoding="utf-8")
+    for phrase in (
+        "safevault init",
+        "safevault restore",
+        "safevault ui",
+        "不是裸盘恢复",
+        "0.1.0rc1",
+    ):
+        assert phrase in text
+
+
+def test_gui_guide_documents_confirmation_words() -> None:
+    root = Path(__file__).resolve().parents[1]
+    text = (root / "docs" / "zh" / "GUI_GUIDE.md").read_text(encoding="utf-8")
+    for phrase in (
+        "RESTORE",
+        "ALLOW DELETE",
+        "CLEAN SANDBOXES",
+        "OVERWRITE EXPORT",
+        "SKIP VERIFY",
+        "IMPORT",
+    ):
+        assert phrase in text
+
+
+def test_safety_model_documents_core_security_terms() -> None:
+    root = Path(__file__).resolve().parents[1]
+    text = (root / "docs" / "zh" / "SAFETY_MODEL.md").read_text(encoding="utf-8")
+    for phrase in ("BLAKE3", "external symlink", "diff", "导入", "不是恶意代码沙箱"):
+        assert phrase in text

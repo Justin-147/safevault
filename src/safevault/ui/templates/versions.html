@@ -5,11 +5,12 @@
   <label>File <input name="file" value="{{ file }}" required></label>
   <button type="submit">Load Versions</button>
 </form>
-<p class="warning">Existing target will be preserved by SafeVault before overwrite.</p>
+<p class="warning">Restore writes to the target path. Existing target will be preserved by SafeVault before overwrite.</p>
 {% if file %}
 <form method="post" action="/restore" class="inline">
   <input type="hidden" name="file" value="{{ file }}">
   <input type="hidden" name="mode" value="latest">
+  <input name="confirmation" placeholder="type RESTORE" required>
   <button type="submit">Restore Latest</button>
 </form>
 {% endif %}
@@ -30,6 +31,7 @@
         <input type="hidden" name="mode" value="version">
         <input type="hidden" name="version_id" value="{{ version.version_id }}">
         <input name="to_path" placeholder="optional alternate path">
+        <input name="confirmation" placeholder="type RESTORE" required>
         <button type="submit">Restore</button>
       </form>
       {% endif %}
@@ -38,4 +40,3 @@
   {% endfor %}
 </table>
 {% endblock %}
-

@@ -170,6 +170,7 @@ def build_router() -> APIRouter:
         mode: str = Form("latest"),
         version_id: int | None = Form(None),
         to_path: str = Form(""),
+        confirmation: str = Form(""),
         token: str = Depends(require_token),
     ) -> HTMLResponse:
         message = None
@@ -180,6 +181,7 @@ def build_router() -> APIRouter:
                 latest=mode == "latest",
                 version_id=None if mode == "latest" else version_id,
                 to_path=Path(to_path) if to_path else None,
+                confirmation=confirmation,
             )
             message = f"Restored to {target}"
         except SafeVaultError as exc:
@@ -292,7 +294,9 @@ def build_router() -> APIRouter:
             elif action == "sandbox-clean-dry-run":
                 result = services.sandbox_clean_from_ui(dry_run=True, confirm=False)
             elif action == "sandbox-clean-confirm":
-                result = services.sandbox_clean_from_ui(dry_run=False, confirm=True)
+                result = services.sandbox_clean_from_ui(
+                    dry_run=False, confirm=True, confirmation=confirmation
+                )
             elif action == "retention-plan":
                 result = services.retention_plan_for_ui()
             else:
@@ -324,6 +328,8 @@ def build_router() -> APIRouter:
         overwrite: bool = Form(False),
         skip_verify: bool = Form(False),
         allow_inside_vault: bool = Form(False),
+        overwrite_confirmation: str = Form(""),
+        skip_verify_confirmation: str = Form(""),
         token: str = Depends(require_token),
     ) -> HTMLResponse:
         result = None
@@ -335,6 +341,8 @@ def build_router() -> APIRouter:
                 overwrite=overwrite,
                 skip_verify=skip_verify,
                 allow_inside_vault=allow_inside_vault,
+                overwrite_confirmation=overwrite_confirmation,
+                skip_verify_confirmation=skip_verify_confirmation,
             )
         except SafeVaultError as exc:
             error = _error_message(exc)

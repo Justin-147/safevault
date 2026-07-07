@@ -13,5 +13,6 @@ assert app is not None
 print("ui app ok")
 PY
 bash scripts/smoke.sh
+bash scripts/gui_smoke.sh
 python -m build
 python -m twine check dist/*

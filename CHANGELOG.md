@@ -11,6 +11,8 @@ Safety guarantees:
   original project.
 - `safevault apply` skips deletions unless `--allow-delete` is passed.
 - The local GUI binds to localhost by default and requires a random token.
+- GUI restore, export overwrite, export skip-verify, sandbox cleanup, apply
+  delete, import, and prune flows require typed confirmation words.
 - Object-store reads and restores verify BLAKE3 content hashes.
 - External symlink placeholders are tracked by sandbox sidecar metadata.
 - `unprotect` and `sandbox-clean` require explicit confirmation for destructive
@@ -30,6 +32,10 @@ Added:
 - Local FastAPI GUI for roots, snapshots, restore, sandboxes, maintenance, and
   export/import workflows.
 - Chinese README and user documentation under `docs/zh`.
+- GUI security smoke test for local HTTP dashboard access.
+
+Security hardening:
+- GUI restore/export/sandbox-clean confirmations were tightened for RC1.
 
 Upgrade notes:
 - Run `safevault doctor --deep` and `safevault verify --deep` after upgrading.

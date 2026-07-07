@@ -26,6 +26,10 @@ diff 里有受保护路径、外部 symlink、缺失 hash 或特殊文件。Safe
 
 archive 路径、manifest、SQLite 完整性或对象 hash 不符合要求。只导入你信任的 archive。
 
+## 6.1 GUI confirmation rejected
+
+确认词必须完全匹配，例如 `RESTORE`、`CLEAN SANDBOXES`、`OVERWRITE EXPORT`、`SKIP VERIFY`、`IMPORT`、`OVERWRITE`。大小写或空格不一致都会被拒绝。
+
 ## 7. Windows symlink 权限问题
 
 启用 Developer Mode 或使用管理员权限创建 symlink；否则相关测试会跳过或使用 fallback。
@@ -46,4 +50,3 @@ archive 路径、manifest、SQLite 完整性或对象 hash 不符合要求。只
 echo "$SAFEVAULT_HOME"
 safevault doctor
 ```
-
