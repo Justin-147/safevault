@@ -12,6 +12,26 @@ snapshots. Content objects are addressed by BLAKE3 hash and verified before
 read or restore. It is not a replacement for system backups or off-machine
 backups.
 
+## Release Status
+
+SafeVault is suitable for cautious personal/project use after you have verified:
+
+- CI passes on your target platform.
+- `safevault verify --deep` is healthy.
+- You have an off-machine export or backup.
+
+SafeVault is not a hardened malware sandbox and not a replacement for OS backups.
+
+Operational checklist:
+
+```bash
+safevault doctor --deep
+safevault verify --deep
+safevault export --output /external/safevault-export.tar.gz --gzip
+```
+
+Write exports to an external disk or sync them off-machine.
+
 ## What It Does Not Do
 
 SafeVault v1 does not perform raw disk recovery and does not parse NTFS, APFS,
@@ -185,6 +205,8 @@ safevault unprotect ~/Projects/myapp --confirm
 safevault sandbox-clean --older-than 30d --status applied --dry-run
 safevault sandbox-clean --older-than 30d --status applied --confirm
 safevault export --output /tmp/safevault-export.tar.gz --gzip
+safevault import --input /tmp/safevault-export.tar.gz --target-home /tmp/safevault-restore --dry-run
+safevault import --input /tmp/safevault-export.tar.gz --target-home /tmp/safevault-restore --confirm
 safevault retention-plan --keep-days 90
 ```
 
@@ -195,9 +217,11 @@ health summary. `unprotect` is destructive metadata cleanup, so it requires
 deleted. `sandbox-clean` defaults to dry-run and removes only sandbox
 directories matching both age and status filters when `--confirm` is passed.
 `export` writes a vault archive containing `vault.db`, `objects/`, and a
-manifest, excluding temp files and sandbox work directories. `retention-plan`
-is non-destructive and reports old versions that a future retention policy could
-remove.
+manifest, excluding temp files and sandbox work directories. `import` defaults
+to a dry-run unless `--confirm` is passed; it validates archive member paths,
+manifest schema, database integrity, and object hashes before replacing the
+target home. `retention-plan` is non-destructive and reports old versions that a
+future retention policy could remove.
 
 ## Validation
 

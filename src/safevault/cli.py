@@ -13,6 +13,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from safevault import __version__
 from safevault.config import VALID_PROFILES
 from safevault.db import (
     connect,
@@ -25,6 +26,7 @@ from safevault.doctor import run_doctor
 from safevault.durations import parse_duration
 from safevault.errors import FileNotTrackedError, RootNotFoundError, SafeVaultError
 from safevault.exporter import export_vault
+from safevault.importer import import_vault
 from safevault.object_store import iter_object_hashes, object_path
 from safevault.paths import ensure_home_layout, get_sandboxes_dir
 from safevault.prune import prune_unreferenced_objects
@@ -36,7 +38,7 @@ from safevault.verify import run_verify
 from safevault.watcher import watch_roots
 
 console = Console()
-app = typer.Typer(no_args_is_help=True)
+app = typer.Typer(no_args_is_help=True, invoke_without_command=True)
 
 SAFE_SANDBOX_CLEAN_STATUSES = {"applied"}
 
@@ -78,6 +80,13 @@ def handle_errors[F: Callable[..., object]](func: F) -> F:
             raise typer.Exit(1) from None
 
     return wrapper  # type: ignore[return-value]
+
+
+@app.callback()
+def main_callback(version: bool = typer.Option(False, "--version")) -> None:
+    if version:
+        console.print(__version__)
+        raise typer.Exit()
 
 
 @app.command(name="init")
@@ -606,12 +615,43 @@ def export(
     output: Annotated[Path, typer.Option("--output")],
     gzip: bool = typer.Option(False, "--gzip"),
     allow_inside_vault: bool = typer.Option(False, "--allow-inside-vault"),
+    overwrite: bool = typer.Option(False, "--overwrite"),
+    skip_verify: bool = typer.Option(False, "--skip-verify"),
 ) -> None:
     result = export_vault(
-        output=output, gzip=gzip, allow_inside_vault=allow_inside_vault
+        output=output,
+        gzip=gzip,
+        allow_inside_vault=allow_inside_vault,
+        overwrite=overwrite,
+        skip_verify=skip_verify,
     )
     console.print(f"Exported vault: {result.output}")
     console.print(f"Objects exported: {result.object_count}")
+    console.print(f"Verified before export: {'yes' if result.verified else 'no'}")
+
+
+@app.command(name="import")
+@handle_errors
+def import_command(
+    input_path: Annotated[Path, typer.Option("--input")],
+    target_home: Annotated[Path, typer.Option("--target-home")],
+    dry_run: bool = typer.Option(False, "--dry-run"),
+    confirm: bool = typer.Option(False, "--confirm"),
+    overwrite: bool = typer.Option(False, "--overwrite"),
+) -> None:
+    result = import_vault(
+        input_path=input_path,
+        target_home=target_home,
+        confirm=confirm and not dry_run,
+        overwrite=overwrite,
+    )
+    if result.dry_run:
+        console.print("Dry run: no files imported")
+        console.print(f"Would import objects: {result.object_count}")
+        console.print(f"Target home: {result.target_home}")
+    else:
+        console.print(f"Imported SafeVault home: {result.target_home}")
+        console.print(f"Objects imported: {result.object_count}")
 
 
 @app.command(name="retention-plan")

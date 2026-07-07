@@ -22,3 +22,28 @@ jobs:
       - run: pytest -q
       - run: python -m safevault --help
       - run: bash scripts/smoke.sh
+      - run: python -m build
+      - run: python -m twine check dist/*
+
+  macos-symlink:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - run: pytest -q tests/test_symlink_security.py tests/test_e2e.py
+
+  windows-core:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - run: pytest -q tests/test_cli.py tests/test_object_store.py tests/test_diffing.py tests/test_apply_tamper_resistance.py
+      - run: python -m safevault --help

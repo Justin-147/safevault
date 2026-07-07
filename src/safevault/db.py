@@ -26,6 +26,24 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+def backup_database_to(destination: Path) -> None:
+    """Create a transactionally consistent copy of the SafeVault SQLite DB."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        destination.unlink()
+    source = connect()
+    dest = sqlite3.connect(destination)
+    try:
+        source.backup(dest)
+        result = str(dest.execute("PRAGMA integrity_check").fetchone()[0])
+        if result.lower() != "ok":
+            raise SafeVaultError(f"database backup integrity check failed: {result}")
+        dest.commit()
+    finally:
+        dest.close()
+        source.close()
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     create_base_schema_if_missing(conn)
     migrate(conn)
