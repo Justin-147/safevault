@@ -10,8 +10,9 @@ from typing import BinaryIO
 
 from safevault.atomic import fsync_dir, fsync_file
 from safevault.errors import ObjectMissingError
-from safevault.hashing import hash_bytes, hash_file, new_hasher, symlink_payload
+from safevault.hashing import hash_bytes, hash_file, new_hasher
 from safevault.paths import ensure_home_layout, get_objects_dir, get_tmp_dir
+from safevault.symlinks import symlink_payload
 
 
 def object_path(content_hash: str) -> Path:

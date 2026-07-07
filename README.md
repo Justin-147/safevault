@@ -77,6 +77,7 @@ reflects the restored content.
 ```bash
 safevault run --project ~/Projects/myapp -- codex
 safevault sandboxes --latest
+safevault apply <sandbox-id> --dry-run
 safevault apply <sandbox-id>
 safevault apply <sandbox-id> --allow-delete
 ```
@@ -91,6 +92,17 @@ placeholder file instead, preventing sandbox commands from writing through that
 link to outside files. Internal symlinks are preserved only when they still
 resolve inside the sandbox copy.
 
+If an external symlink is not modified by the sandbox command, it is treated as
+unchanged and does not appear in the sandbox diff. `safevault apply` also refuses
+to copy an external-symlink placeholder back over the original symlink. If a
+sandbox command turns that placeholder into an ordinary file, SafeVault treats
+the file-kind change as unsafe and preserves the original symlink.
+
+`diff.json` uses schema version `1` and includes creation time, the original
+root, the sandbox work root, the SafeVault version, entries, and
+created/modified/deleted counts. Unsupported schema versions or root metadata
+that does not match the sandbox record are rejected before apply begins.
+
 ## Apply Behavior
 
 `safevault apply` treats `diff.json` as untrusted input. It validates relative
@@ -98,15 +110,32 @@ paths, rejects absolute or parent-escaping paths, rejects protected and ignored
 paths for all change types, validates file kinds and hashes, and refuses unsafe
 symlinks.
 
-Created and modified files are copied back with atomic replace. Deletions are
-skipped unless `--allow-delete` is explicitly passed. Even with `--allow-delete`,
-SafeVault never deletes protected paths such as `.git`, `.safevault`,
-`node_modules`, `.venv`, `venv`, `dist`, `build`, or `target`.
+Use `safevault apply <sandbox-id> --dry-run` to validate a sandbox diff without
+changing files, taking pre/post apply snapshots, or changing sandbox status.
+
+Created and modified files are copied back with atomic replace only after their
+mandatory hashes match. Deletions are skipped unless `--allow-delete` is
+explicitly passed. Even with `--allow-delete`, SafeVault never deletes protected
+paths such as `.git`, `.safevault`, `node_modules`, `.venv`, `venv`, `dist`,
+`build`, or `target`.
 
 SafeVault also detects conflicts. If the original project changed after
 `safevault run`, apply skips that entry instead of overwriting user work. After
 successful writes or deletions, SafeVault snapshots the original project with
 reason `post-apply`.
+
+Apply exit codes are intended for automation:
+
+- `0`: completed successfully, including the normal case where deletions were
+  skipped because `--allow-delete` was not passed.
+- `1`: expected SafeVault user error, such as an unknown sandbox id.
+- `2`: apply found conflicts, unsafe entries, or missing sandbox sources.
+
+Diff entries must include required hash metadata: created entries require
+`new_hash`, modified entries require `old_hash` and `new_hash`, and deleted
+entries require `old_hash`. Sandbox sources are classified without following
+symlinks; directories, FIFOs, sockets, devices, and other special files are
+rejected before hashing or copying.
 
 ## Doctor And Prune
 
@@ -140,5 +169,6 @@ python -m safevault --help
 - No raw disk recovery.
 - Recovery is limited to previously captured snapshots.
 - `safevault run` is not a hardened malicious-code sandbox.
+- No off-machine backup.
 - The watcher is best-effort and snapshots remain the source of recovery.
 - Prune only deletes unreferenced content objects.

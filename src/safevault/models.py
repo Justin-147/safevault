@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
+
+from safevault import __version__
+from safevault.errors import SafeVaultError
+
+DIFF_SCHEMA_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -98,6 +104,7 @@ class DiffEntry:
     rel_path: str
     change_type: str
     file_kind: str
+    old_file_kind: str | None = None
     old_hash: str | None = None
     new_hash: str | None = None
     old_size: int | None = None
@@ -109,7 +116,7 @@ class DiffEntry:
             "change_type": self.change_type,
             "file_kind": self.file_kind,
         }
-        for key in ("old_hash", "new_hash", "old_size", "new_size"):
+        for key in ("old_file_kind", "old_hash", "new_hash", "old_size", "new_size"):
             value = getattr(self, key)
             if value is not None:
                 data[key] = value
@@ -121,6 +128,9 @@ class DiffEntry:
             rel_path=str(data["rel_path"]),
             change_type=str(data["change_type"]),
             file_kind=str(data["file_kind"]),
+            old_file_kind=(
+                str(data["old_file_kind"]) if data.get("old_file_kind") is not None else None
+            ),
             old_hash=data.get("old_hash") if data.get("old_hash") is not None else None,
             new_hash=data.get("new_hash") if data.get("new_hash") is not None else None,
             old_size=int(data["old_size"]) if data.get("old_size") is not None else None,
@@ -131,16 +141,45 @@ class DiffEntry:
 @dataclass(frozen=True)
 class DiffResult:
     entries: list[DiffEntry]
+    schema_version: int = DIFF_SCHEMA_VERSION
+    created_at: str | None = None
+    original_root: str | None = None
+    sandbox_root: str | None = None
+    safevault_version: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
+            "schema_version": self.schema_version,
+            "created_at": self.created_at
+            or datetime.now(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z"),
+            "original_root": self.original_root,
+            "sandbox_root": self.sandbox_root,
+            "safevault_version": self.safevault_version or __version__,
             "entries": [entry.to_dict() for entry in self.entries],
             "counts": self.counts(),
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DiffResult:
-        return cls([DiffEntry.from_dict(item) for item in data.get("entries", [])])
+        schema_version = data.get("schema_version")
+        if schema_version != DIFF_SCHEMA_VERSION:
+            raise SafeVaultError(f"unsupported diff schema version: {schema_version!r}")
+        return cls(
+            [DiffEntry.from_dict(item) for item in data.get("entries", [])],
+            schema_version=int(schema_version),
+            created_at=str(data["created_at"]) if data.get("created_at") is not None else None,
+            original_root=(
+                str(data["original_root"]) if data.get("original_root") is not None else None
+            ),
+            sandbox_root=(
+                str(data["sandbox_root"]) if data.get("sandbox_root") is not None else None
+            ),
+            safevault_version=(
+                str(data["safevault_version"])
+                if data.get("safevault_version") is not None
+                else None
+            ),
+        )
 
     def counts(self) -> dict[str, int]:
         counts = {"created": 0, "modified": 0, "deleted": 0}

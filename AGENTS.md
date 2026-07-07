@@ -9,6 +9,10 @@ Safety rules:
 - Always snapshot before restore overwrite.
 - Always snapshot before applying sandbox changes.
 - Never follow symlinks outside a protected root.
+- Never apply external symlink placeholders over original symlinks.
+- Require mandatory hashes in diff entries before applying them.
+- Reject non-regular sandbox sources before hashing or copying them.
+- Return CLI exit code 2 for apply conflicts, unsafe entries, or missing sources.
 - Never bypass OS permissions.
 - Never delete SafeVault's own database or object store.
 

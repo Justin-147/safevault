@@ -183,10 +183,19 @@ def run(
 
 @app.command()
 @handle_errors
-def apply(sandbox_id: str, allow_delete: bool = typer.Option(False, "--allow-delete")) -> None:
-    result = apply_sandbox(sandbox_id, allow_delete=allow_delete)
-    console.print(f"Applied files: {result.applied}")
-    console.print(f"Deleted files: {result.deleted}")
+def apply(
+    sandbox_id: str,
+    allow_delete: bool = typer.Option(False, "--allow-delete"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    result = apply_sandbox(sandbox_id, allow_delete=allow_delete, dry_run=dry_run)
+    if dry_run:
+        console.print("Dry run: no files changed")
+        console.print(f"Would apply files: {result.applied}")
+        console.print(f"Would delete files: {result.deleted}")
+    else:
+        console.print(f"Applied files: {result.applied}")
+        console.print(f"Deleted files: {result.deleted}")
     if result.skipped_deletions:
         console.print("Skipped deletions:")
         for rel_path in result.skipped_deletions:
@@ -203,6 +212,8 @@ def apply(sandbox_id: str, allow_delete: bool = typer.Option(False, "--allow-del
         console.print("Missing sandbox sources:")
         for rel_path in result.missing_sources:
             console.print(f"- {rel_path}")
+    if result.conflicts or result.unsafe or result.missing_sources:
+        raise typer.Exit(2)
 
 
 @app.command()

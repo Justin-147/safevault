@@ -12,6 +12,7 @@ from safevault.atomic import atomic_copy_file, atomic_write_bytes
 from safevault.db import connect, get_or_create_root, utc_now_iso
 from safevault.diffing import diff_dirs
 from safevault.errors import SafeVaultError, SandboxNotFoundError, UnsafeOperationError
+from safevault.filetypes import SafeFileKind, classify_no_follow
 from safevault.hashing import hash_file, hash_path_no_follow, hash_symlink, symlink_payload
 from safevault.ignore import build_pathspec, is_ignored
 from safevault.models import ApplyResult, DiffEntry, DiffResult, SandboxRecord
@@ -23,8 +24,10 @@ from safevault.safety import (
     validate_apply_target,
 )
 from safevault.snapshot import create_snapshot, relative_path
-
-EXTERNAL_SYMLINK_MARKER = "SAFEVAULT_EXTERNAL_SYMLINK\n"
+from safevault.symlinks import (
+    external_symlink_placeholder,
+    is_external_symlink_placeholder_file,
+)
 
 
 def _sandbox_id() -> str:
@@ -42,10 +45,7 @@ def _resolved_link_target(link_path: Path, link_target: str) -> Path:
 def _copy_symlink(project: Path, sandbox_work: Path, src: Path, dest: Path) -> None:
     target = os.readlink(src)
     if not symlink_target_stays_within(project, src, target):
-        atomic_write_bytes(
-            dest,
-            f"{EXTERNAL_SYMLINK_MARKER}{target}".encode("utf-8", "surrogateescape"),
-        )
+        atomic_write_bytes(dest, external_symlink_placeholder(target))
         return
 
     resolved_target = _resolved_link_target(src, target)
@@ -182,7 +182,16 @@ def _load_diff(sandbox: SandboxRecord) -> DiffResult:
     diff_path = Path(sandbox.sandbox_path).parent / "diff.json"
     if not diff_path.is_file():
         raise SafeVaultError(f"diff file missing: {diff_path}")
-    return DiffResult.from_dict(json.loads(diff_path.read_text(encoding="utf-8")))
+    diff = DiffResult.from_dict(json.loads(diff_path.read_text(encoding="utf-8")))
+    if diff.original_root is not None and Path(diff.original_root).resolve(strict=False) != Path(
+        sandbox.original_path
+    ).resolve(strict=False):
+        raise SafeVaultError("diff original_root does not match sandbox metadata")
+    if diff.sandbox_root is not None and Path(diff.sandbox_root).resolve(strict=False) != Path(
+        sandbox.sandbox_path
+    ).resolve(strict=False):
+        raise SafeVaultError("diff sandbox_root does not match sandbox metadata")
+    return diff
 
 
 def _copy_from_sandbox(original: Path, source: Path, dest: Path) -> None:
@@ -209,15 +218,27 @@ def _entry_source_hash(source: Path) -> str:
 def _validate_diff_entry(entry: DiffEntry) -> None:
     if entry.change_type not in {"created", "modified", "deleted"}:
         raise UnsafeOperationError(f"unknown change type: {entry.change_type}")
-    if entry.file_kind not in {"file", "symlink"}:
+    if entry.file_kind not in {"file", "symlink", "external_symlink_placeholder"}:
         raise UnsafeOperationError(f"unknown file kind: {entry.file_kind}")
+    if entry.old_file_kind is not None and entry.old_file_kind not in {
+        "file",
+        "symlink",
+        "external_symlink_placeholder",
+    }:
+        raise UnsafeOperationError(f"unknown old file kind: {entry.old_file_kind}")
+    if entry.file_kind == "external_symlink_placeholder":
+        raise UnsafeOperationError("external symlink placeholder cannot be applied")
+    if entry.change_type == "created" and entry.new_hash is None:
+        raise UnsafeOperationError("created entry missing new_hash")
+    if entry.change_type == "modified" and (
+        entry.old_hash is None or entry.new_hash is None
+    ):
+        raise UnsafeOperationError("modified entry missing old_hash or new_hash")
+    if entry.change_type == "deleted" and entry.old_hash is None:
+        raise UnsafeOperationError("deleted entry missing old_hash")
     if is_protected_rel_path(entry.rel_path):
         raise UnsafeOperationError(f"protected or ignored path in diff: {entry.rel_path}")
     safe_rel_path(entry.rel_path)
-
-
-def _source_kind(source: Path) -> str:
-    return "symlink" if source.is_symlink() else "file"
 
 
 def apply_sandbox(
@@ -255,18 +276,37 @@ def apply_sandbox(
                 if not source.exists() and not source.is_symlink():
                     missing_sources.append(entry.rel_path)
                     continue
-                if source.is_dir() and not source.is_symlink():
+                source_kind = classify_no_follow(source)
+                if source_kind == SafeFileKind.DIRECTORY:
                     unsafe.append(f"{entry.rel_path}: sandbox source is a directory")
                     continue
-                if _source_kind(source) != entry.file_kind:
+                if source_kind == SafeFileKind.OTHER:
+                    unsafe.append(
+                        f"{entry.rel_path}: sandbox source is not a regular file or symlink"
+                    )
+                    continue
+                expected_source_kind = (
+                    SafeFileKind.REGULAR
+                    if entry.file_kind == "file"
+                    else SafeFileKind.SYMLINK
+                )
+                if source_kind != expected_source_kind:
                     unsafe.append(f"{entry.rel_path}: sandbox source kind mismatch")
+                    continue
+                is_placeholder, _placeholder_target = is_external_symlink_placeholder_file(
+                    source
+                )
+                if is_placeholder:
+                    unsafe.append(
+                        f"{entry.rel_path}: external symlink placeholder cannot be applied"
+                    )
                     continue
                 if source.is_symlink() and not symlink_target_stays_within(
                     original, dest, os.readlink(source)
                 ):
                     unsafe.append(f"{entry.rel_path}: external symlink target")
                     continue
-                if entry.new_hash is not None and _entry_source_hash(source) != entry.new_hash:
+                if _entry_source_hash(source) != entry.new_hash:
                     unsafe.append(f"{entry.rel_path}: sandbox source hash mismatch")
                     continue
 
@@ -277,7 +317,25 @@ def apply_sandbox(
                     if not dest.exists() and not dest.is_symlink():
                         conflicts.append(entry.rel_path)
                         continue
-                    if entry.old_hash is None or hash_path_no_follow(dest) != entry.old_hash:
+                    if (
+                        entry.old_file_kind is not None
+                        and entry.old_file_kind != entry.file_kind
+                    ):
+                        unsafe.append(
+                            f"{entry.rel_path}: changing file kind from "
+                            f"{entry.old_file_kind} to {entry.file_kind} is not auto-applied"
+                        )
+                        continue
+                    dest_kind = classify_no_follow(dest)
+                    expected_dest_kind = (
+                        SafeFileKind.REGULAR
+                        if (entry.old_file_kind or entry.file_kind) == "file"
+                        else SafeFileKind.SYMLINK
+                    )
+                    if dest_kind != expected_dest_kind:
+                        conflicts.append(entry.rel_path)
+                        continue
+                    if hash_path_no_follow(dest) != entry.old_hash:
                         conflicts.append(entry.rel_path)
                         continue
 
@@ -292,10 +350,22 @@ def apply_sandbox(
                 if not dest.exists() and not dest.is_symlink():
                     skipped_deletions.append(entry.rel_path)
                     continue
-                if dest.is_dir() and not dest.is_symlink():
+                dest_kind = classify_no_follow(dest)
+                expected_dest_kind = (
+                    SafeFileKind.REGULAR
+                    if entry.file_kind == "file"
+                    else SafeFileKind.SYMLINK
+                )
+                if dest_kind == SafeFileKind.DIRECTORY:
                     unsafe.append(f"{entry.rel_path}: refusing to delete directory")
                     continue
-                if entry.old_hash is None or hash_path_no_follow(dest) != entry.old_hash:
+                if dest_kind == SafeFileKind.OTHER:
+                    unsafe.append(f"{entry.rel_path}: refusing to delete special file")
+                    continue
+                if dest_kind != expected_dest_kind:
+                    conflicts.append(entry.rel_path)
+                    continue
+                if hash_path_no_follow(dest) != entry.old_hash:
                     conflicts.append(entry.rel_path)
                     continue
                 if not dry_run:

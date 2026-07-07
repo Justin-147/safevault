@@ -5,6 +5,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from safevault.config import PROTECTED_DELETE_NAMES
 from safevault.errors import UnsafeOperationError
+from safevault.filetypes import SafeFileKind, classify_no_follow
 from safevault.ignore import build_pathspec
 
 
@@ -75,3 +76,12 @@ def symlink_target_stays_within(root: Path, link_path: Path, link_target: str) -
     else:
         resolved_target = (link_path.parent / link_target).resolve(strict=False)
     return resolved_target == root_resolved or resolved_target.is_relative_to(root_resolved)
+
+
+def source_kind_no_follow(path: Path) -> str | None:
+    kind = classify_no_follow(path)
+    if kind == SafeFileKind.SYMLINK:
+        return "symlink"
+    if kind == SafeFileKind.REGULAR:
+        return "file"
+    return None

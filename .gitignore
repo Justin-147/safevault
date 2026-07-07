@@ -3,12 +3,14 @@
 .pip-cache/
 .tmp/
 .tmp-pip/
-.test-tmp/
+.test-tmp*/
 
 __pycache__/
 *.py[cod]
 *.pyo
 .pytest_cache/
+.pytest-basetemp/
+pytest-cache-files-*/
 .ruff_cache/
 .mypy_cache/
 .coverage

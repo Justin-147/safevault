@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from safevault.symlinks import symlink_payload
+
 try:
     import blake3
 except ImportError as exc:  # pragma: no cover - exercised only in broken environments.
@@ -27,10 +29,6 @@ def hash_file(path: Path) -> str:
         for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
             hasher.update(chunk)
     return hasher.hexdigest()
-
-
-def symlink_payload(target: str) -> bytes:
-    return f"SYMLINK\n{target}".encode("utf-8", "surrogateescape")
 
 
 def hash_symlink_target(target: str) -> str:

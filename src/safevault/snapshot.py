@@ -4,13 +4,14 @@ import os
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from safevault import object_store
 from safevault.db import connect, get_or_create_root, utc_now_iso
 from safevault.errors import SafeVaultError
-from safevault.hashing import symlink_payload
 from safevault.ignore import build_pathspec, is_ignored
 from safevault.paths import ensure_home_layout
+from safevault.symlinks import symlink_payload
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,14 @@ class CapturedEntry:
     size: int
     mtime_ns: int
     mode: int
+
+
+@dataclass(frozen=True)
+class CaptureFailure:
+    reason: Literal["missing", "unreadable", "unstable"]
+
+
+CaptureResult = CapturedEntry | CaptureFailure
 
 
 def relative_path(root: Path, path: Path) -> str:
@@ -167,13 +176,27 @@ def _stat_signature(stat_result: os.stat_result) -> tuple[int, int, int | None, 
 
 def capture_entry_stable(
     path: Path, file_kind: str, max_retries: int = 2
-) -> CapturedEntry | None:
+) -> CaptureResult:
     for _attempt in range(max_retries + 1):
-        before = path.lstat()
+        try:
+            before = path.lstat()
+        except FileNotFoundError:
+            return CaptureFailure("missing")
+        except PermissionError:
+            return CaptureFailure("unreadable")
+        except OSError:
+            return CaptureFailure("unstable")
         mode = int(before.st_mode)
         if file_kind == "symlink":
-            payload = _symlink_payload(path)
-            after = path.lstat()
+            try:
+                payload = _symlink_payload(path)
+                after = path.lstat()
+            except FileNotFoundError:
+                return CaptureFailure("missing")
+            except PermissionError:
+                return CaptureFailure("unreadable")
+            except OSError:
+                return CaptureFailure("unstable")
             if _stat_signature(before) != _stat_signature(after):
                 continue
             content_hash = object_store.store_bytes(payload)
@@ -185,8 +208,15 @@ def capture_entry_stable(
                 mode=mode,
             )
 
-        content_hash = object_store.store_file(path)
-        after = path.lstat()
+        try:
+            content_hash = object_store.store_file(path)
+            after = path.lstat()
+        except FileNotFoundError:
+            return CaptureFailure("missing")
+        except PermissionError:
+            return CaptureFailure("unreadable")
+        except OSError:
+            return CaptureFailure("unstable")
         if _stat_signature(before) != _stat_signature(after):
             continue
         return CapturedEntry(
@@ -196,7 +226,7 @@ def capture_entry_stable(
             mtime_ns=int(after.st_mtime_ns),
             mode=mode,
         )
-    return None
+    return CaptureFailure("unstable")
 
 
 def create_snapshot(path: Path, reason: str = "manual", profile: str = "coding") -> int:
@@ -225,10 +255,25 @@ def create_snapshot(path: Path, reason: str = "manual", profile: str = "coding")
 
         for item_path, file_kind in _iter_trackable(root_path):
             rel_path = relative_path(root_path, item_path)
+            try:
+                stat_result = item_path.lstat()
+            except FileNotFoundError:
+                continue
+            except PermissionError:
+                seen.add(rel_path)
+                _insert_event(conn, root_id, "unreadable", rel_path)
+                continue
+            except OSError:
+                seen.add(rel_path)
+                _insert_event(conn, root_id, "unstable", rel_path)
+                continue
             seen.add(rel_path)
-            stat_result = item_path.lstat()
             if file_kind == "symlink":
-                size = len(_symlink_payload(item_path))
+                try:
+                    size = len(_symlink_payload(item_path))
+                except OSError:
+                    _insert_event(conn, root_id, "unstable", rel_path)
+                    continue
             else:
                 size = stat_result.st_size
             mtime_ns = int(stat_result.st_mtime_ns)
@@ -248,8 +293,11 @@ def create_snapshot(path: Path, reason: str = "manual", profile: str = "coding")
                 continue
 
             captured = capture_entry_stable(item_path, file_kind)
-            if captured is None:
-                _insert_event(conn, root_id, "unstable", rel_path)
+            if isinstance(captured, CaptureFailure):
+                if captured.reason == "missing":
+                    seen.discard(rel_path)
+                else:
+                    _insert_event(conn, root_id, captured.reason, rel_path)
                 continue
             file_id = _upsert_file(
                 conn,
