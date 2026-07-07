@@ -151,5 +151,18 @@ def _unchanged_external_symlink_placeholder(
         old_entry.get("file_kind") == "symlink"
         and old_entry.get("symlink_external") is True
         and new_entry.get("file_kind") == "external_symlink_placeholder"
-        and old_entry.get("symlink_target") == new_entry.get("placeholder_target")
+        and _same_target_string(
+            old_entry.get("symlink_target"), new_entry.get("placeholder_target")
+        )
     )
+
+
+def _same_target_string(left: object, right: object) -> bool:
+    if not isinstance(left, str) or not isinstance(right, str):
+        return False
+    if left == right:
+        return True
+    try:
+        return Path(left).resolve(strict=False) == Path(right).resolve(strict=False)
+    except OSError:
+        return False
