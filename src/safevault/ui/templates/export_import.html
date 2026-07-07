@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Export / Import</h1>
+<section class="panel">
+  <h2>Export</h2>
+  <form method="post" action="/export-import/export">
+    <label>Output path <input name="output" required></label>
+    <label><input type="checkbox" name="gzip" value="true"> gzip</label>
+    <label><input type="checkbox" name="overwrite" value="true"> overwrite</label>
+    <label><input type="checkbox" name="skip_verify" value="true"> skip verify (not recommended)</label>
+    <label><input type="checkbox" name="allow_inside_vault" value="true"> allow inside SAFEVAULT_HOME</label>
+    <button type="submit">Export</button>
+  </form>
+  {% if export_result %}<p>Exported {{ export_result.object_count }} objects to {{ export_result.output }}</p>{% endif %}
+</section>
+<section class="panel">
+  <h2>Import</h2>
+  <p>Default is dry-run. Confirm requires typing IMPORT. Overwrite requires typing OVERWRITE.</p>
+  <form method="post" action="/export-import/import">
+    <label>Input archive <input name="input_path" required></label>
+    <label>Target home <input name="target_home" required></label>
+    <label><input type="checkbox" name="dry_run" value="true" checked> dry-run</label>
+    <label><input type="checkbox" name="confirm" value="true"> confirm</label>
+    <input name="import_confirmation" placeholder="type IMPORT">
+    <label><input type="checkbox" name="overwrite" value="true"> overwrite</label>
+    <input name="overwrite_confirmation" placeholder="type OVERWRITE">
+    <button type="submit">Import</button>
+  </form>
+  {% if import_result %}<p>Import {{ "dry-run" if import_result.dry_run else "complete" }}: {{ import_result.object_count }} objects, target {{ import_result.target_home }}</p>{% endif %}
+</section>
+{% endblock %}
+

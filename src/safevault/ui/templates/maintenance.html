@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Maintenance</h1>
+<section class="actions">
+  {% for action_name in ["doctor-fast", "doctor-deep", "verify-fast", "verify-deep", "prune-dry-run", "sandbox-clean-dry-run", "retention-plan"] %}
+  <form method="post" action="/maintenance"><button name="action" value="{{ action_name }}" type="submit">{{ action_name }}</button></form>
+  {% endfor %}
+</section>
+<section class="panel">
+  <h2>Destructive confirmations</h2>
+  <form method="post" action="/maintenance">
+    <input type="hidden" name="action" value="prune-confirm">
+    <input name="confirmation" placeholder="type PRUNE">
+    <button type="submit">Prune Confirm</button>
+  </form>
+  <form method="post" action="/maintenance">
+    <input type="hidden" name="action" value="sandbox-clean-confirm">
+    <button type="submit">Sandbox Clean Confirm (applied only)</button>
+  </form>
+</section>
+{% if result %}<pre>{{ result }}</pre>{% endif %}
+{% endblock %}
+

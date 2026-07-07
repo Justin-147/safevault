@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Sandbox Detail</h1>
+{% if sandbox and diff %}
+<dl class="grid">
+  <dt>ID</dt><dd>{{ sandbox.id }}</dd>
+  <dt>Original</dt><dd>{{ sandbox.original_path }}</dd>
+  <dt>Status</dt><dd>{{ sandbox.status }}</dd>
+  <dt>Counts</dt><dd>{{ sandbox.counts }}</dd>
+</dl>
+<section class="panel">
+  <form method="post" action="/sandboxes/{{ sandbox.id }}/apply">
+    <button name="dry_run" value="true" type="submit">Apply Dry Run</button>
+  </form>
+  <form method="post" action="/sandboxes/{{ sandbox.id }}/apply">
+    <button type="submit">Apply Without Delete</button>
+  </form>
+  <form method="post" action="/sandboxes/{{ sandbox.id }}/apply">
+    <label><input type="checkbox" name="allow_delete" value="true"> Allow delete</label>
+    <input name="delete_confirmation" placeholder="type ALLOW DELETE">
+    <button type="submit">Apply With Delete</button>
+  </form>
+</section>
+<table>
+  <tr><th>Path</th><th>Change</th><th>Kind</th><th>Old hash</th><th>New hash</th></tr>
+  {% for entry in diff.entries %}
+  <tr>
+    <td>{{ entry.rel_path }}</td>
+    <td>{{ entry.change_type }}</td>
+    <td>{{ entry.file_kind }}</td>
+    <td>{{ entry.old_hash or "" }}</td>
+    <td>{{ entry.new_hash or "" }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}
+

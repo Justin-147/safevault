@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Apply Result</h1>
+<p><a href="/sandboxes/{{ sandbox_id }}">Back to sandbox</a></p>
+{% if result %}
+<dl class="grid">
+  <dt>Applied</dt><dd>{{ result.applied }}</dd>
+  <dt>Deleted</dt><dd>{{ result.deleted }}</dd>
+  <dt>Skipped deletions</dt><dd>{{ result.skipped_deletions }}</dd>
+  <dt>Conflicts</dt><dd>{{ result.conflicts }}</dd>
+  <dt>Unsafe</dt><dd>{{ result.unsafe }}</dd>
+  <dt>Missing sources</dt><dd>{{ result.missing_sources }}</dd>
+</dl>
+{% endif %}
+{% endblock %}
+

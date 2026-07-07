@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SafeVault Local UI</title>
+  <link rel="stylesheet" href="/static/safevault.css">
+</head>
+<body>
+  <header>
+    <div>
+      <strong>SafeVault Local UI</strong>
+      <span class="warning">{{ local_warning }}</span>
+    </div>
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/roots">Roots</a>
+      <a href="/deleted">Deleted</a>
+      <a href="/sandboxes">Sandboxes</a>
+      <a href="/maintenance">Maintenance</a>
+      <a href="/export-import">Export/Import</a>
+      <a href="/help">Help</a>
+    </nav>
+  </header>
+  <main>
+    {% if message %}<p class="message">{{ message }}</p>{% endif %}
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  <script src="/static/safevault.js"></script>
+</body>
+</html>
+

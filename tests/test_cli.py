@@ -62,6 +62,12 @@ def test_version_option_prints_package_version(runner, sv_home) -> None:
     assert __version__ in result.output
 
 
+def test_ui_rejects_public_host_without_override(runner, sv_home) -> None:
+    result = runner.invoke(app, ["ui", "--host", "0.0.0.0"])
+    assert result.exit_code == 1
+    assert "--allow-public-bind" in result.output
+
+
 def test_pyproject_version_matches_package_version() -> None:
     root = Path(__file__).resolve().parents[1]
     pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))

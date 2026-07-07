@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -16,7 +17,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install --upgrade pip
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev,ui]"
       - run: bash scripts/release_check.sh
       - uses: actions/upload-artifact@v4
         with:
@@ -31,7 +32,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev,ui]"
       - run: pytest -q tests/test_symlink_security.py tests/test_e2e.py
 
   windows-core:
@@ -42,7 +43,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip
-      - run: pip install -e ".[dev]"
-      - run: pytest -q tests/test_cli.py tests/test_object_store.py tests/test_diffing.py tests/test_apply_tamper_resistance.py
+      - run: pip install -e ".[dev,ui]"
+      - run: pytest -q tests/test_cli.py tests/test_object_store.py tests/test_diffing.py tests/test_apply_tamper_resistance.py tests/test_import.py
       - run: python -m safevault --help
       - run: python -m safevault --version

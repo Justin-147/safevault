@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Roots</h1>
+<form method="post" action="/roots/add" class="panel">
+  <h2>Add Protected Root</h2>
+  <label>Path <input name="path" required></label>
+  <label>Profile
+    <select name="profile">
+      {% for profile in profiles %}<option value="{{ profile }}">{{ profile }}</option>{% endfor %}
+    </select>
+  </label>
+  <button type="submit">Protect Root</button>
+</form>
+<table>
+  <thead><tr><th>ID</th><th>Path</th><th>Profile</th><th>Exists</th><th>Active</th><th>Deleted</th><th>Last snapshot</th><th></th></tr></thead>
+  <tbody>
+  {% for root in roots %}
+  <tr>
+    <td>{{ root.id }}</td>
+    <td>{{ root.path }}</td>
+    <td>{{ root.profile }}</td>
+    <td>{{ "yes" if root.exists else "no" }}</td>
+    <td>{{ root.active_count }}</td>
+    <td>{{ root.deleted_count }}</td>
+    <td>{{ root.last_snapshot or "" }}</td>
+    <td><a href="/roots/{{ root.id }}">Open</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+

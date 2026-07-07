@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Dashboard</h1>
+{% if status %}
+<dl class="grid">
+  <dt>Version</dt><dd>{{ status.version }}</dd>
+  <dt>SAFEVAULT_HOME</dt><dd>{{ status.safevault_home }}</dd>
+  <dt>Doctor fast</dt><dd>{{ "healthy" if status.doctor_healthy else "unhealthy" }}</dd>
+  <dt>Verify fast</dt><dd>{{ "healthy" if status.verify_healthy else "unhealthy" }}</dd>
+  <dt>Roots</dt><dd>{{ status.roots_count }}</dd>
+  <dt>Snapshots</dt><dd>{{ status.snapshots_count }}</dd>
+  <dt>Tracked active/deleted</dt><dd>{{ status.active_files_count }} / {{ status.deleted_files_count }}</dd>
+  <dt>Object store size</dt><dd>{{ status.object_store_size }}</dd>
+  <dt>Latest sandbox</dt><dd>{% if status.latest_sandbox %}{{ status.latest_sandbox.id }} ({{ status.latest_sandbox.status }}){% else %}none{% endif %}</dd>
+</dl>
+{% endif %}
+<section class="actions">
+  <a href="/roots">Roots</a>
+  <a href="/sandboxes">Sandboxes</a>
+  <a href="/deleted">Restore</a>
+  <a href="/maintenance">Maintenance</a>
+  <a href="/export-import">Export/Import</a>
+  <a href="/help">Chinese Help</a>
+</section>
+{% endblock %}
+

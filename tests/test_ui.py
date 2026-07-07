@@ -1,0 +1,235 @@
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from safevault.db import connect
+from safevault.sandbox import create_sandbox
+from safevault.snapshot import create_snapshot
+from safevault.ui.app import create_app
+from safevault.ui.auth import UI_COOKIE_NAME
+
+TOKEN = "test-token"
+
+
+def _root_id_for(path: Path) -> int:
+    conn = connect()
+    try:
+        row = conn.execute("SELECT id FROM roots WHERE path = ?", (str(path.resolve()),)).fetchone()
+        assert row is not None
+        return int(row["id"])
+    finally:
+        conn.close()
+
+
+def _sandbox_status(sandbox_id: str) -> str:
+    conn = connect()
+    try:
+        row = conn.execute(
+            "SELECT status FROM sandboxes WHERE id = ?", (sandbox_id,)
+        ).fetchone()
+        assert row is not None
+        return str(row["status"])
+    finally:
+        conn.close()
+
+
+def _version_count() -> int:
+    conn = connect()
+    try:
+        return int(conn.execute("SELECT COUNT(*) FROM versions").fetchone()[0])
+    finally:
+        conn.close()
+
+
+def test_ui_requires_token_sets_cookie_and_serves_pages(sv_home: Path) -> None:
+    with TestClient(create_app(token=TOKEN)) as client:
+        assert client.get("/").status_code == 403
+
+        response = client.get("/", params={"token": TOKEN})
+        assert response.status_code == 200
+        assert UI_COOKIE_NAME in client.cookies
+        assert "Local UI only. Not a remote admin console." in response.text
+
+        for path in (
+            "/roots",
+            "/versions",
+            "/deleted",
+            "/sandboxes",
+            "/maintenance",
+            "/export-import",
+            "/help",
+        ):
+            page = client.get(path)
+            assert page.status_code == 200
+            assert "Local UI only. Not a remote admin console." in page.text
+
+        doc = client.get("/docs/zh/GUI_GUIDE.md")
+        assert doc.status_code == 200
+        assert "不做裸盘恢复" in doc.text
+
+
+def test_ui_post_requires_token(sv_home: Path, project: Path) -> None:
+    with TestClient(create_app(token=TOKEN)) as client:
+        response = client.post(
+            "/roots/add",
+            data={"path": str(project), "profile": "coding"},
+        )
+    assert response.status_code == 403
+
+
+def test_ui_can_add_root_and_run_snapshot(sv_home: Path, project: Path) -> None:
+    (project / "tracked.txt").write_text("tracked", encoding="utf-8")
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        response = client.post(
+            "/roots/add",
+            data={"path": str(project), "profile": "coding"},
+        )
+        assert response.status_code == 200
+        assert "Protected root" in response.text
+
+        root_id = _root_id_for(project)
+        response = client.post(
+            f"/roots/{root_id}/snapshot",
+            data={"reason": "ui-test"},
+        )
+        assert response.status_code == 200
+        assert "Snapshot" in response.text
+        assert _version_count() == 1
+
+
+def test_ui_versions_restore_and_deleted_page(sv_home: Path, project: Path) -> None:
+    file_path = project / "note.txt"
+    file_path.write_text("first", encoding="utf-8")
+    create_snapshot(project, reason="first")
+    file_path.write_text("second", encoding="utf-8")
+    create_snapshot(project, reason="second")
+    file_path.unlink()
+    create_snapshot(project, reason="deleted")
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        deleted = client.get("/deleted", params={"since": "7d"})
+        assert deleted.status_code == 200
+        assert "note.txt" in deleted.text
+
+        versions = client.get("/versions", params={"file": str(file_path)})
+        assert versions.status_code == 200
+        assert "Versions / Restore" in versions.text
+        assert "note.txt" in versions.text
+
+        restored = client.post(
+            "/restore",
+            data={"file": str(file_path), "mode": "latest"},
+        )
+        assert restored.status_code == 200
+        assert "Restored to" in restored.text
+        assert file_path.read_text(encoding="utf-8") == "second"
+
+
+def test_ui_sandbox_dry_run_preserves_project(sv_home: Path, project: Path) -> None:
+    old_file = project / "old.txt"
+    new_file = project / "new.txt"
+    old_file.write_text("old", encoding="utf-8")
+    command = (
+        "from pathlib import Path; "
+        "Path('old.txt').unlink(); "
+        "Path('new.txt').write_text('new', encoding='utf-8')"
+    )
+    sandbox_id, returncode, _diff, _diff_path = create_sandbox(
+        project, [sys.executable, "-c", command]
+    )
+    assert returncode == 0
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        detail = client.get(f"/sandboxes/{sandbox_id}")
+        assert detail.status_code == 200
+        assert sandbox_id in detail.text
+
+        rejected = client.post(
+            f"/sandboxes/{sandbox_id}/apply",
+            data={
+                "dry_run": "true",
+                "allow_delete": "true",
+                "delete_confirmation": "wrong",
+            },
+        )
+        assert rejected.status_code == 200
+        assert "ALLOW DELETE" in rejected.text
+
+        result = client.post(
+            f"/sandboxes/{sandbox_id}/apply",
+            data={
+                "dry_run": "true",
+                "allow_delete": "true",
+                "delete_confirmation": "ALLOW DELETE",
+            },
+        )
+        assert result.status_code == 200
+        assert "Apply Result" in result.text
+
+    assert old_file.read_text(encoding="utf-8") == "old"
+    assert not new_file.exists()
+    assert _sandbox_status(sandbox_id) == "complete"
+
+
+def test_ui_maintenance_actions(sv_home: Path) -> None:
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        doctor = client.post("/maintenance", data={"action": "doctor-fast"})
+        assert doctor.status_code == 200
+        assert "doctor-fast complete" in doctor.text
+
+        verify = client.post("/maintenance", data={"action": "verify-fast"})
+        assert verify.status_code == 200
+        assert "verify-fast complete" in verify.text
+
+        prune = client.post(
+            "/maintenance",
+            data={"action": "prune-confirm", "confirmation": "wrong"},
+        )
+        assert prune.status_code == 200
+        assert "type PRUNE" in prune.text
+
+
+def test_ui_export_import_dry_run_and_export_guard(
+    sv_home: Path, project: Path, tmp_path: Path
+) -> None:
+    (project / "tracked.txt").write_text("tracked", encoding="utf-8")
+    create_snapshot(project)
+    output = tmp_path / "safevault-export.tar"
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        exported = client.post(
+            "/export-import/export",
+            data={"output": str(output)},
+        )
+        assert exported.status_code == 200
+        assert "Exported" in exported.text
+        assert output.is_file()
+
+        guarded = client.post(
+            "/export-import/export",
+            data={"output": str(sv_home / "inside.tar")},
+        )
+        assert guarded.status_code == 200
+        assert "SAFEVAULT_HOME" in guarded.text
+
+        target_home = tmp_path / "imported-safevault-home"
+        imported = client.post(
+            "/export-import/import",
+            data={
+                "input_path": str(output),
+                "target_home": str(target_home),
+                "dry_run": "true",
+            },
+        )
+        assert imported.status_code == 200
+        assert "dry-run" in imported.text
+        assert not target_home.exists()

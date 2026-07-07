@@ -10,6 +10,7 @@ Safety guarantees:
 - `safevault run` operates on a copied working tree and does not mutate the
   original project.
 - `safevault apply` skips deletions unless `--allow-delete` is passed.
+- The local GUI binds to localhost by default and requires a random token.
 - Object-store reads and restores verify BLAKE3 content hashes.
 - External symlink placeholders are tracked by sandbox sidecar metadata.
 - `unprotect` and `sandbox-clean` require explicit confirmation for destructive
@@ -18,11 +19,17 @@ Safety guarantees:
 Known limitations:
 - No raw disk recovery.
 - Not a hardened malware sandbox.
+- The GUI is local-only and not a remote admin console.
 - No continuous cross-machine sync.
 - Retention is planning-only in this release candidate.
 - Export/import exists, but archives should still be stored off-machine.
 - Import requires a trusted export archive and an empty target home unless
   `--overwrite` is explicitly passed.
+
+Added:
+- Local FastAPI GUI for roots, snapshots, restore, sandboxes, maintenance, and
+  export/import workflows.
+- Chinese README and user documentation under `docs/zh`.
 
 Upgrade notes:
 - Run `safevault doctor --deep` and `safevault verify --deep` after upgrading.

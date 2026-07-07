@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Sandboxes</h1>
+<table>
+  <tr><th>ID</th><th>Original</th><th>Created</th><th>Status</th><th>Diff counts</th><th></th></tr>
+  {% for sandbox in sandboxes %}
+  <tr>
+    <td>{{ sandbox.id }}</td>
+    <td>{{ sandbox.original_path }}</td>
+    <td>{{ sandbox.created_at }}</td>
+    <td>{{ sandbox.status }}</td>
+    <td>+{{ sandbox.counts.created }} ~{{ sandbox.counts.modified }} -{{ sandbox.counts.deleted }}</td>
+    <td><a href="/sandboxes/{{ sandbox.id }}">Open</a></td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}
+

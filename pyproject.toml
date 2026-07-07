@@ -23,7 +23,14 @@ dev = [
   "ruff>=0.5",
   "mypy>=1.10",
   "build>=1.2",
+  "httpx2>=2.5",
   "twine>=5.0",
+]
+ui = [
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "jinja2>=3.1",
+  "python-multipart>=0.0.9",
 ]
 
 [project.scripts]
@@ -31,6 +38,10 @@ safevault = "safevault.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/safevault"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"README.zh-CN.md" = "safevault/ui/docs/README.zh-CN.md"
+"docs/zh" = "safevault/ui/docs/zh"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

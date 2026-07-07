@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/Justin-147/safevault/actions/workflows/ci.yml/badge.svg)](https://github.com/Justin-147/safevault/actions/workflows/ci.yml)
 
+Chinese documentation: [README.zh-CN.md](README.zh-CN.md)
+
 SafeVault is a local file-protection and recovery tool for project directories.
 It captures versioned snapshots, stores file content in a BLAKE3-addressed
 object store, records file versions and deletion markers in SQLite, restores
@@ -67,6 +69,16 @@ pip install -e .[dev]
 ```
 
 SafeVault requires Python 3.12 and the `blake3` package.
+
+## Graphical UI
+
+```bash
+safevault ui --open
+```
+
+The UI binds to `127.0.0.1` by default and uses a random token printed at
+startup. It is a local convenience UI, not a remote admin console. Do not expose
+it to public networks.
 
 ## Quickstart
 

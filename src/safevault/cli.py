@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import secrets
 import shutil
+import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -41,6 +43,7 @@ console = Console()
 app = typer.Typer(no_args_is_help=True, invoke_without_command=True)
 
 SAFE_SANDBOX_CLEAN_STATUSES = {"applied"}
+LOCAL_UI_HOSTS = {"127.0.0.1", "localhost"}
 
 
 def print_json(data: object) -> None:
@@ -652,6 +655,42 @@ def import_command(
     else:
         console.print(f"Imported SafeVault home: {result.target_home}")
         console.print(f"Objects imported: {result.object_count}")
+
+
+@app.command(name="ui")
+@handle_errors
+def ui_command(
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8765, "--port", min=1, max=65535),
+    open_browser: bool = typer.Option(False, "--open"),
+    allow_public_bind: bool = typer.Option(False, "--allow-public-bind"),
+) -> None:
+    if host not in LOCAL_UI_HOSTS and not allow_public_bind:
+        raise SafeVaultError(
+            "GUI binds only to 127.0.0.1/localhost by default; pass "
+            "--allow-public-bind to bind another host"
+        )
+    try:
+        import uvicorn
+
+        from safevault.ui.app import create_app
+    except ModuleNotFoundError as exc:
+        if exc.name in {"fastapi", "uvicorn", "jinja2", "multipart"}:
+            raise SafeVaultError("Install UI dependencies with: pip install -e '.[ui]'") from exc
+        raise
+    except RuntimeError as exc:
+        if "python-multipart" in str(exc):
+            raise SafeVaultError("Install UI dependencies with: pip install -e '.[ui]'") from exc
+        raise
+
+    token = secrets.token_urlsafe(32)
+    url = f"http://{host}:{port}/?token={token}"
+    console.print("SafeVault local UI")
+    console.print("Local UI only. Not a remote admin console.")
+    console.print(url)
+    if open_browser:
+        webbrowser.open(url)
+    uvicorn.run(create_app(token=token), host=host, port=port)
 
 
 @app.command(name="retention-plan")

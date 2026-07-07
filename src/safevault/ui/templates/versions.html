@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Versions / Restore</h1>
+<form method="get" action="/versions" class="panel">
+  <label>File <input name="file" value="{{ file }}" required></label>
+  <button type="submit">Load Versions</button>
+</form>
+<p class="warning">Existing target will be preserved by SafeVault before overwrite.</p>
+{% if file %}
+<form method="post" action="/restore" class="inline">
+  <input type="hidden" name="file" value="{{ file }}">
+  <input type="hidden" name="mode" value="latest">
+  <button type="submit">Restore Latest</button>
+</form>
+{% endif %}
+<table>
+  <tr><th>Version</th><th>Captured</th><th>Size</th><th>Kind</th><th>Hash</th><th>Deleted</th><th>Action</th></tr>
+  {% for version in versions %}
+  <tr>
+    <td>{{ version.version_id }}</td>
+    <td>{{ version.captured_at }}</td>
+    <td>{{ version.size or "" }}</td>
+    <td>{{ version.file_kind }}</td>
+    <td>{{ version.content_hash[:12] if version.content_hash else "" }}</td>
+    <td>{{ "yes" if version.deleted else "no" }}</td>
+    <td>
+      {% if not version.deleted %}
+      <form method="post" action="/restore">
+        <input type="hidden" name="file" value="{{ file }}">
+        <input type="hidden" name="mode" value="version">
+        <input type="hidden" name="version_id" value="{{ version.version_id }}">
+        <input name="to_path" placeholder="optional alternate path">
+        <button type="submit">Restore</button>
+      </form>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}
+

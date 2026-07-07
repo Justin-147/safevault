@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Root Detail</h1>
+{% if detail %}
+<dl class="grid">
+  <dt>ID</dt><dd>{{ detail.root.id }}</dd>
+  <dt>Path</dt><dd>{{ detail.root.path }}</dd>
+  <dt>Active/deleted</dt><dd>{{ detail.root.active_count }} / {{ detail.root.deleted_count }}</dd>
+</dl>
+<form method="post" action="/roots/{{ detail.root.id }}/snapshot" class="inline">
+  <input name="reason" value="ui-manual">
+  <button type="submit">Snapshot</button>
+</form>
+<form method="get" action="/versions" class="inline">
+  <input name="file" placeholder="absolute file path">
+  <button type="submit">View Versions</button>
+</form>
+<section class="panel">
+  <h2>Unprotect</h2>
+  <p>Dry-run first. Confirm requires typing the root id or full root path. Object-store content files are not deleted.</p>
+  <form method="post" action="/roots/{{ detail.root.id }}/unprotect">
+    <button name="mode" value="dry-run" type="submit">Dry Run</button>
+    <input name="confirmation" placeholder="root id or full path">
+    <button name="mode" value="confirm" type="submit">Confirm Unprotect</button>
+  </form>
+</section>
+<h2>Recent Snapshots</h2>
+<table><tr><th>ID</th><th>Reason</th><th>Started</th><th>Status</th></tr>
+{% for snapshot in detail.snapshots %}
+<tr><td>{{ snapshot.id }}</td><td>{{ snapshot.reason }}</td><td>{{ snapshot.started_at }}</td><td>{{ snapshot.status }}</td></tr>
+{% endfor %}
+</table>
+<h2>Recent Deleted Markers</h2>
+<table><tr><th>Path</th><th>Captured</th></tr>
+{% for item in detail.deleted_markers %}
+<tr><td>{{ item.rel_path }}</td><td>{{ item.captured_at }}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+{% if plan %}
+<h2>Unprotect Plan</h2>
+<pre>{{ plan }}</pre>
+{% endif %}
+{% endblock %}
+

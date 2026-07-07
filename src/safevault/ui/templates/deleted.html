@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Deleted Files</h1>
+<form method="get" action="/deleted">
+  <select name="since">
+    {% for item in ["24h", "7d", "30d"] %}<option value="{{ item }}" {% if item == since %}selected{% endif %}>{{ item }}</option>{% endfor %}
+  </select>
+  <button type="submit">Filter</button>
+</form>
+<table>
+  <tr><th>Root</th><th>Path</th><th>Detected</th><th>Action</th></tr>
+  {% for entry in entries %}
+  <tr>
+    <td>{{ entry.root_path }}</td>
+    <td>{{ entry.rel_path }}</td>
+    <td>{{ entry.detected_at }}</td>
+    <td>
+      <form method="post" action="/restore">
+        <input type="hidden" name="file" value="{{ entry.absolute_path }}">
+        <input type="hidden" name="mode" value="latest">
+        <button type="submit">Restore Latest</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}
+
