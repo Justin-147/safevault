@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0-rc1
+## 0.1.0rc1
 
 SafeVault is a local project protection and recovery tool built around
 versioned snapshots, a BLAKE3-addressed object store, restore, sandboxed command
@@ -20,7 +20,8 @@ Known limitations:
 - Not a hardened malware sandbox.
 - No continuous cross-machine sync.
 - Retention is planning-only in this release candidate.
-- Import requires an export archive and an empty target home unless
+- Export/import exists, but archives should still be stored off-machine.
+- Import requires a trusted export archive and an empty target home unless
   `--overwrite` is explicitly passed.
 
 Upgrade notes:

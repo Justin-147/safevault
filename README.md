@@ -14,11 +14,16 @@ backups.
 
 ## Release Status
 
+SafeVault `v0.1.0rc1` is a release candidate, not a stable/final release. The
+corresponding Git tag may be named `v0.1.0-rc1`, while Python package metadata
+uses the PEP 440 version `0.1.0rc1`.
+
 SafeVault is suitable for cautious personal/project use after you have verified:
 
 - CI passes on your target platform.
 - `safevault verify --deep` is healthy.
-- You have an off-machine export or backup.
+- You have tested export/import round-trip restore.
+- You store export archives off-machine.
 
 SafeVault is not a hardened malware sandbox and not a replacement for OS backups.
 
@@ -28,6 +33,7 @@ Operational checklist:
 safevault doctor --deep
 safevault verify --deep
 safevault export --output /external/safevault-export.tar.gz --gzip
+safevault import --input /external/safevault-export.tar.gz --target-home /tmp/safevault-imported --dry-run
 ```
 
 Write exports to an external disk or sync them off-machine.
@@ -216,12 +222,28 @@ health summary. `unprotect` is destructive metadata cleanup, so it requires
 `--confirm`; `--dry-run` prints row counts and object-store content files are not
 deleted. `sandbox-clean` defaults to dry-run and removes only sandbox
 directories matching both age and status filters when `--confirm` is passed.
-`export` writes a vault archive containing `vault.db`, `objects/`, and a
-manifest, excluding temp files and sandbox work directories. `import` defaults
-to a dry-run unless `--confirm` is passed; it validates archive member paths,
-manifest schema, database integrity, and object hashes before replacing the
-target home. `retention-plan` is non-destructive and reports old versions that a
+`export` writes a vault archive containing a transactionally consistent
+`vault.db` backup, referenced object files, and a manifest. For RC1, exports
+include referenced objects only and intentionally exclude orphan objects.
+`import` defaults to a dry-run unless `--confirm` is passed; dry-run performs
+the full validation path, including archive member paths and types, manifest
+schema, database integrity, object counts, referenced object presence, and object
+hash contents. Import trusted archives into a fresh target home whenever
+possible; importing into the current live `SAFEVAULT_HOME` or inside it is
+rejected. `retention-plan` is non-destructive and reports old versions that a
 future retention policy could remove.
+
+Export/import round-trip:
+
+```bash
+safevault export --output /external/safevault-export.tar.gz --gzip
+safevault import --input /external/safevault-export.tar.gz --target-home /tmp/safevault-imported --dry-run
+safevault import --input /external/safevault-export.tar.gz --target-home /tmp/safevault-imported --confirm
+SAFEVAULT_HOME=/tmp/safevault-imported safevault verify --deep
+SAFEVAULT_HOME=/tmp/safevault-imported safevault doctor --deep
+```
+
+Import only archives you created or otherwise trust.
 
 ## Validation
 
@@ -230,13 +252,29 @@ ruff check .
 mypy src
 pytest -q
 python -m safevault --help
+python -m safevault --version
+bash scripts/smoke.sh
+bash scripts/release_check.sh
+python -m build
+python -m twine check dist/*
 ```
+
+Release checklist for `v0.1.0-rc1`:
+
+- Linux CI, macOS symlink CI, and Windows core CI are green.
+- README release status says release candidate, not stable/final.
+- `CHANGELOG.md`, `pyproject.toml`, and `safevault.__version__` agree on
+  `0.1.0rc1`.
+- Export/import round-trip works in a clean environment.
+- Export archives are stored off-machine.
 
 ## Limitations
 
 - No raw disk recovery.
 - Recovery is limited to previously captured snapshots.
 - `safevault run` is not a hardened malicious-code sandbox.
-- No off-machine backup.
+- No continuous sync or built-in off-machine backup.
+- Import archives must be trusted.
 - The watcher is best-effort and snapshots remain the source of recovery.
+- Retention is planning-only in this release candidate.
 - Prune only deletes unreferenced content objects.

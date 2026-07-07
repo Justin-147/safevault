@@ -27,3 +27,9 @@ test -f "$PROJECT/new.txt"
 
 python -m safevault verify --deep
 python -m safevault doctor --deep
+
+python -m safevault export --output "$ROOT/export.tar.gz" --gzip
+python -m safevault import --input "$ROOT/export.tar.gz" --target-home "$ROOT/imported-home" --dry-run
+python -m safevault import --input "$ROOT/export.tar.gz" --target-home "$ROOT/imported-home" --confirm
+SAFEVAULT_HOME="$ROOT/imported-home" python -m safevault verify --deep
+SAFEVAULT_HOME="$ROOT/imported-home" python -m safevault doctor --deep

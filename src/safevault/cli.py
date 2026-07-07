@@ -495,9 +495,9 @@ def roots_command(json_output: bool = typer.Option(False, "--json")) -> None:
     if json_output:
         print_json(data)
         return
-    console.print("ID\tPath\tProfile\tCreated\tExists")
+    print("ID\tPath\tProfile\tCreated\tExists")
     for root in rows:
-        console.print(
+        print(
             f"{root.id}\t{root.path}\t{root.profile}\t{root.created_at}\t"
             f"{'yes' if Path(root.path).exists() else 'no'}"
         )

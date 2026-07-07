@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import sqlite3
 import tarfile
+from pathlib import Path
 
 from safevault.cli import app
-from safevault.object_store import object_path
+from safevault.object_store import object_path, store_bytes
 from safevault.paths import get_tmp_dir
 from safevault.snapshot import create_snapshot
 
@@ -24,7 +25,9 @@ def test_export_creates_archive_with_db_objects_and_manifest(
         assert "manifest.json" in names
         assert any(name.startswith("objects/") for name in names)
         manifest = json.loads(archive.extractfile("manifest.json").read().decode("utf-8"))
-    assert manifest["object_count"] == 1
+    assert manifest["referenced_object_count"] == 1
+    assert manifest["exported_object_count"] == 1
+    assert manifest["included_orphans"] is False
     assert manifest["database"] == "vault.db"
     assert manifest["schema_version"] == 1
     assert manifest["verified"] is True
@@ -51,6 +54,35 @@ def test_export_uses_consistent_sqlite_backup(runner, sv_home, project, tmp_path
         assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
     finally:
         conn.close()
+
+
+def test_export_archive_contains_all_objects_referenced_by_backup(
+    runner, sv_home, project, tmp_path
+) -> None:
+    (project / "a.txt").write_text("tracked", encoding="utf-8")
+    (project / "b.txt").write_text("also tracked", encoding="utf-8")
+    create_snapshot(project)
+    output = tmp_path / "safevault-export.tar"
+    result = runner.invoke(app, ["export", "--output", str(output)])
+    assert result.exit_code == 0
+    db_copy = tmp_path / "vault.db"
+    with tarfile.open(output) as archive:
+        names = archive.getnames()
+        db_copy.write_bytes(archive.extractfile("vault.db").read())
+    archived_objects = {
+        Path(name).name for name in names if name.startswith("objects/")
+    }
+    conn = sqlite3.connect(db_copy)
+    try:
+        referenced = {
+            row[0]
+            for row in conn.execute(
+                "SELECT DISTINCT content_hash FROM versions WHERE content_hash IS NOT NULL"
+            )
+        }
+    finally:
+        conn.close()
+    assert referenced == archived_objects
 
 
 def test_export_archive_db_is_readable_without_wal_file(runner, sv_home, project, tmp_path) -> None:
@@ -162,6 +194,30 @@ def test_export_skip_verify_allows_corrupted_object_archive_only_when_explicit(
     with tarfile.open(output) as archive:
         manifest = json.loads(archive.extractfile("manifest.json").read().decode("utf-8"))
     assert manifest["verified"] is False
+
+
+def test_export_excludes_corrupted_orphan_objects(
+    runner, sv_home, project, tmp_path
+) -> None:
+    (project / "a.txt").write_text("tracked", encoding="utf-8")
+    create_snapshot(project)
+    orphan_hash = store_bytes(b"orphan")
+    object_path(orphan_hash).write_bytes(b"corrupt orphan")
+    output = tmp_path / "export.tar"
+    result = runner.invoke(app, ["export", "--output", str(output)])
+    assert result.exit_code == 0
+    with tarfile.open(output) as archive:
+        names = archive.getnames()
+        manifest = json.loads(archive.extractfile("manifest.json").read().decode("utf-8"))
+    assert f"objects/{orphan_hash[:2]}/{orphan_hash[2:4]}/{orphan_hash}" not in names
+    assert manifest["included_orphans"] is False
+    assert manifest["referenced_object_count"] == manifest["exported_object_count"] == 1
+    target = tmp_path / "imported"
+    import_result = runner.invoke(
+        app,
+        ["import", "--input", str(output), "--target-home", str(target), "--dry-run"],
+    )
+    assert import_result.exit_code == 0
 
 
 def test_failed_export_leaves_existing_output_unchanged(

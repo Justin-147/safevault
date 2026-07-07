@@ -17,13 +17,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"
-      - run: ruff check .
-      - run: mypy src
-      - run: pytest -q
-      - run: python -m safevault --help
-      - run: bash scripts/smoke.sh
-      - run: python -m build
-      - run: python -m twine check dist/*
+      - run: bash scripts/release_check.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: safevault-dist
+          path: dist/*
 
   macos-symlink:
     runs-on: macos-latest
@@ -47,3 +45,4 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: pytest -q tests/test_cli.py tests/test_object_store.py tests/test_diffing.py tests/test_apply_tamper_resistance.py
       - run: python -m safevault --help
+      - run: python -m safevault --version
