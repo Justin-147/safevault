@@ -162,8 +162,17 @@ class DiffResult:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DiffResult:
         schema_version = data.get("schema_version")
+        if schema_version is None:
+            raise SafeVaultError(
+                "diff.json missing schema_version; old diff.json files are unsupported"
+            )
         if schema_version != DIFF_SCHEMA_VERSION:
             raise SafeVaultError(f"unsupported diff schema version: {schema_version!r}")
+        for key in ("created_at", "original_root", "sandbox_root"):
+            if not data.get(key):
+                raise SafeVaultError(
+                    f"diff.json missing {key}; old diff.json files are unsupported"
+                )
         return cls(
             [DiffEntry.from_dict(item) for item in data.get("entries", [])],
             schema_version=int(schema_version),

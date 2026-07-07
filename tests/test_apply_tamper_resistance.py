@@ -175,6 +175,16 @@ def test_apply_rejects_unsupported_diff_schema(sv_home, project) -> None:
         apply_sandbox(sandbox_id)
 
 
+def test_apply_rejects_missing_diff_metadata(sv_home, project) -> None:
+    sandbox_id = _manual_sandbox(
+        project,
+        DiffEntry("new.txt", "created", "file", new_hash=hash_bytes(b"new")),
+        diff_data={"schema_version": 1, "created_at": "now", "entries": [], "counts": {}},
+    )
+    with pytest.raises(SafeVaultError, match="original_root"):
+        apply_sandbox(sandbox_id)
+
+
 def test_apply_rejects_mismatched_original_root(sv_home, project) -> None:
     sandbox_id = _manual_sandbox(
         project,
@@ -215,7 +225,9 @@ def _manual_sandbox(
     for rel_path in directories or []:
         (sandbox_work / Path(*rel_path.split("/"))).mkdir(parents=True)
     diff = DiffResult(
-        [entry], original_root=diff_original_root, sandbox_root=diff_sandbox_root
+        [entry],
+        original_root=diff_original_root or str(project.resolve()),
+        sandbox_root=diff_sandbox_root or str(sandbox_work.resolve()),
     )
     (sandbox_root / "diff.json").write_text(
         json.dumps(diff_data or diff.to_dict()), encoding="utf-8"

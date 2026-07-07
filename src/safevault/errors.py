@@ -14,6 +14,10 @@ class ObjectMissingError(SafeVaultError):
     """Raised when a referenced object is absent from the object store."""
 
 
+class ObjectCorruptError(SafeVaultError):
+    """Raised when a content object does not match its BLAKE3 address."""
+
+
 class InvalidDurationError(SafeVaultError):
     """Raised when a duration value cannot be parsed."""
 

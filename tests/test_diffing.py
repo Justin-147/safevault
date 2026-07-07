@@ -93,7 +93,11 @@ def test_external_symlink_placeholder_is_unchanged_in_diff(tmp_path) -> None:
     (candidate / "outside-link").write_bytes(
         external_symlink_placeholder_payload(str(outside))
     )
-    assert diff_dirs(original, candidate).entries == []
+    assert diff_dirs(
+        original,
+        candidate,
+        candidate_placeholder_map={"outside-link": str(outside)},
+    ).entries == []
 
 
 def test_modified_external_symlink_placeholder_is_reported(tmp_path) -> None:
@@ -107,5 +111,39 @@ def test_modified_external_symlink_placeholder_is_reported(tmp_path) -> None:
     (candidate / "outside-link").write_bytes(
         external_symlink_placeholder_payload(str(tmp_path / "other.txt"))
     )
-    diff = diff_dirs(original, candidate)
+    diff = diff_dirs(
+        original,
+        candidate,
+        candidate_placeholder_map={"outside-link": str(outside)},
+    )
     assert [entry.rel_path for entry in diff.entries] == ["outside-link"]
+
+
+def test_normal_file_with_placeholder_prefix_is_not_special(tmp_path) -> None:
+    original = tmp_path / "original"
+    candidate = tmp_path / "candidate"
+    original.mkdir()
+    candidate.mkdir()
+    (candidate / "note.txt").write_bytes(
+        external_symlink_placeholder_payload("/not/a/symlink")
+    )
+    diff = diff_dirs(original, candidate)
+    assert diff.entries[0].file_kind == "file"
+
+
+def test_diff_json_requires_schema_metadata() -> None:
+    for data, missing in (
+        ({}, "schema_version"),
+        ({"schema_version": 1}, "created_at"),
+        ({"schema_version": 1, "created_at": "now"}, "original_root"),
+        (
+            {"schema_version": 1, "created_at": "now", "original_root": "/tmp/a"},
+            "sandbox_root",
+        ),
+    ):
+        try:
+            DiffResult.from_dict(data)
+        except SafeVaultError as exc:
+            assert missing in str(exc)
+        else:
+            raise AssertionError(f"missing {missing} should fail")

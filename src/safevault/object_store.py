@@ -9,18 +9,43 @@ from pathlib import Path
 from typing import BinaryIO
 
 from safevault.atomic import fsync_dir, fsync_file
-from safevault.errors import ObjectMissingError
+from safevault.errors import ObjectCorruptError, ObjectMissingError, SafeVaultError
 from safevault.hashing import hash_bytes, hash_file, new_hasher
 from safevault.paths import ensure_home_layout, get_objects_dir, get_tmp_dir
 from safevault.symlinks import symlink_payload
 
 
+def validate_content_hash(value: str) -> None:
+    if not _looks_like_hash(value):
+        raise SafeVaultError(f"invalid content hash: {value!r}")
+
+
 def object_path(content_hash: str) -> Path:
+    validate_content_hash(content_hash)
     return get_objects_dir() / content_hash[0:2] / content_hash[2:4] / content_hash
 
 
 def has_object(content_hash: str) -> bool:
     return object_path(content_hash).is_file()
+
+
+def verify_object(content_hash: str) -> bool:
+    path = object_path(content_hash)
+    if not path.is_file():
+        return False
+    try:
+        return hash_file(path) == content_hash
+    except OSError:
+        return False
+
+
+def _require_verified_object(content_hash: str) -> Path:
+    path = object_path(content_hash)
+    if not path.is_file():
+        raise ObjectMissingError(f"object {content_hash} is missing")
+    if not verify_object(content_hash):
+        raise ObjectCorruptError(f"object {content_hash} is corrupted")
+    return path
 
 
 def _store_payload(data: bytes, content_hash: str) -> str:
@@ -84,17 +109,11 @@ def store_file(path: Path) -> str:
 
 
 def read_object(content_hash: str) -> bytes:
-    path = object_path(content_hash)
-    if not path.is_file():
-        raise ObjectMissingError(f"object {content_hash} is missing")
-    return path.read_bytes()
+    return _require_verified_object(content_hash).read_bytes()
 
 
 def open_object(content_hash: str) -> BinaryIO:
-    path = object_path(content_hash)
-    if not path.is_file():
-        raise ObjectMissingError(f"object {content_hash} is missing")
-    return path.open("rb")
+    return _require_verified_object(content_hash).open("rb")
 
 
 def _looks_like_hash(name: str) -> bool:

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from safevault.db import connect
-from safevault.object_store import iter_object_hashes, object_path
+from safevault.object_store import iter_object_hashes, object_path, verify_object
 from safevault.paths import (
     ensure_home_layout,
     get_logs_dir,
@@ -19,6 +19,7 @@ from safevault.paths import (
 class DoctorResult:
     healthy: bool
     missing_objects: list[str]
+    corrupted_objects: list[str]
     orphan_objects: list[str]
     temp_files: list[str]
     missing_roots: list[str]
@@ -29,6 +30,7 @@ class DoctorResult:
     def error_items(self) -> list[str]:
         return [
             *(f"missing referenced object: {item}" for item in self.missing_objects),
+            *(f"corrupted referenced object: {item}" for item in self.corrupted_objects),
             *(f"missing table/directory: {item}" for item in self.missing_tables),
             *(f"missing root: {item}" for item in self.missing_roots),
         ]
@@ -47,6 +49,7 @@ class DoctorResult:
             "errors": self.error_items,
             "warnings": self.warning_items,
             "missing_objects": self.missing_objects,
+            "corrupted_objects": self.corrupted_objects,
             "orphan_objects": self.orphan_objects,
             "temp_files": self.temp_files,
             "missing_roots": self.missing_roots,
@@ -75,6 +78,11 @@ def run_doctor() -> DoctorResult:
         }
         missing_objects = sorted(
             content_hash for content_hash in referenced if not object_path(content_hash).is_file()
+        )
+        corrupted_objects = sorted(
+            content_hash
+            for content_hash in referenced
+            if content_hash not in missing_objects and not verify_object(content_hash)
         )
         disk_objects = set(iter_object_hashes())
         orphan_objects = sorted(disk_objects - referenced)
@@ -108,10 +116,16 @@ def run_doctor() -> DoctorResult:
         for path in get_sandboxes_dir().iterdir()
         if path.is_dir() and not (path / "diff.json").is_file()
     ] if get_sandboxes_dir().exists() else []
-    healthy = not missing_objects and not missing_tables and not missing_roots
+    healthy = (
+        not missing_objects
+        and not corrupted_objects
+        and not missing_tables
+        and not missing_roots
+    )
     return DoctorResult(
         healthy=healthy,
         missing_objects=missing_objects,
+        corrupted_objects=corrupted_objects,
         orphan_objects=orphan_objects,
         temp_files=temp_files,
         missing_roots=missing_roots,

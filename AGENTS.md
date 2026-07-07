@@ -10,6 +10,8 @@ Safety rules:
 - Always snapshot before applying sandbox changes.
 - Never follow symlinks outside a protected root.
 - Never apply external symlink placeholders over original symlinks.
+- External symlink placeholders must be identified from sandbox sidecar metadata, not magic file content alone.
+- Verify object-store content hashes before returning or restoring content.
 - Require mandatory hashes in diff entries before applying them.
 - Reject non-regular sandbox sources before hashing or copying them.
 - Return CLI exit code 2 for apply conflicts, unsafe entries, or missing sources.

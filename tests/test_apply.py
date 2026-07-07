@@ -97,7 +97,12 @@ def _manual_sandbox(project: Path, diff: DiffResult) -> str:
     sandbox_work = project.parent / "manual-work"
     sandbox_work.mkdir()
     diff_path = sandbox_work.parent / "diff.json"
-    diff_path.write_text(json.dumps(diff.to_dict()), encoding="utf-8")
+    diff_with_metadata = DiffResult(
+        diff.entries,
+        original_root=str(project.resolve()),
+        sandbox_root=str(sandbox_work.resolve()),
+    )
+    diff_path.write_text(json.dumps(diff_with_metadata.to_dict()), encoding="utf-8")
     conn = connect()
     try:
         root_id = get_or_create_root(conn, project, "coding")

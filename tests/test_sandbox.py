@@ -54,6 +54,21 @@ def test_diff_json_records_created_modified_deleted(sv_home, project) -> None:
     assert {"created", "modified", "deleted"} <= changes
 
 
+def test_run_writes_placeholder_sidecar_for_external_symlink(
+    sv_home, project, tmp_path
+) -> None:
+    from conftest import make_symlink_or_skip
+
+    outside = tmp_path / "outside.txt"
+    outside.write_text("outside", encoding="utf-8")
+    make_symlink_or_skip(outside, project / "outside-link")
+    sandbox_id, _, _, _ = create_sandbox(project, [sys.executable, "-c", "print('ok')"])
+    sandbox_work = _sandbox_work(sandbox_id)
+    sidecar = sandbox_work.parent / "placeholder-map.json"
+    data = json.loads(sidecar.read_text(encoding="utf-8"))
+    assert data["external_symlink_placeholders"] == {"outside-link": str(outside)}
+
+
 def test_ignored_directories_are_not_copied(sv_home, project) -> None:
     ignored = project / "node_modules"
     ignored.mkdir()

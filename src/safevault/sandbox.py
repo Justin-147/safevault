@@ -29,6 +29,8 @@ from safevault.symlinks import (
     is_external_symlink_placeholder_file,
 )
 
+PLACEHOLDER_MAP_NAME = "placeholder-map.json"
+
 
 def _sandbox_id() -> str:
     stamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
@@ -42,11 +44,11 @@ def _resolved_link_target(link_path: Path, link_target: str) -> Path:
     return (link_path.parent / link_target).resolve(strict=False)
 
 
-def _copy_symlink(project: Path, sandbox_work: Path, src: Path, dest: Path) -> None:
+def _copy_symlink(project: Path, sandbox_work: Path, src: Path, dest: Path) -> str | None:
     target = os.readlink(src)
     if not symlink_target_stays_within(project, src, target):
         atomic_write_bytes(dest, external_symlink_placeholder(target))
-        return
+        return target
 
     resolved_target = _resolved_link_target(src, target)
     target_rel = resolved_target.relative_to(project)
@@ -56,11 +58,13 @@ def _copy_symlink(project: Path, sandbox_work: Path, src: Path, dest: Path) -> N
         os.symlink(sandbox_link_target, dest, target_is_directory=src.is_dir())
     except (OSError, NotImplementedError):
         atomic_write_bytes(dest, symlink_payload(sandbox_link_target))
+    return None
 
 
-def copy_project_to_sandbox(project: Path, sandbox_work: Path) -> None:
+def copy_project_to_sandbox(project: Path, sandbox_work: Path) -> dict[str, str]:
     project = project.expanduser().resolve()
     sandbox_work.mkdir(parents=True, exist_ok=True)
+    placeholder_map: dict[str, str] = {}
     spec = build_pathspec()
     stack = [project]
     while stack:
@@ -75,7 +79,9 @@ def copy_project_to_sandbox(project: Path, sandbox_work: Path) -> None:
                     dest = sandbox_work / Path(*PurePosixPath(rel).parts)
                     if entry.is_symlink():
                         dest.parent.mkdir(parents=True, exist_ok=True)
-                        _copy_symlink(project, sandbox_work, src, dest)
+                        external_target = _copy_symlink(project, sandbox_work, src, dest)
+                        if external_target is not None:
+                            placeholder_map[rel] = external_target
                     elif entry.is_dir(follow_symlinks=False):
                         dest.mkdir(parents=True, exist_ok=True)
                         stack.append(src)
@@ -84,6 +90,17 @@ def copy_project_to_sandbox(project: Path, sandbox_work: Path) -> None:
                         shutil.copy2(src, dest, follow_symlinks=False)
         except OSError:
             continue
+    return placeholder_map
+
+
+def _write_placeholder_map(sandbox_dir: Path, placeholder_map: dict[str, str]) -> Path:
+    payload = {
+        "schema_version": 1,
+        "external_symlink_placeholders": placeholder_map,
+    }
+    path = sandbox_dir / PLACEHOLDER_MAP_NAME
+    atomic_write_bytes(path, json.dumps(payload, indent=2, sort_keys=True).encode("utf-8"))
+    return path
 
 
 def _insert_sandbox(
@@ -134,11 +151,14 @@ def create_sandbox(project: Path, command: list[str]) -> tuple[str, int, DiffRes
     sandbox_id = _sandbox_id()
     sandbox_dir = get_sandboxes_dir() / sandbox_id
     sandbox_work = sandbox_dir / "work"
-    copy_project_to_sandbox(project, sandbox_work)
+    placeholder_map = copy_project_to_sandbox(project, sandbox_work)
+    _write_placeholder_map(sandbox_dir, placeholder_map)
     _insert_sandbox(sandbox_id, root_id, project, sandbox_work, "running")
 
     completed = subprocess.run(command, cwd=sandbox_work, check=False)
-    diff = diff_dirs(project, sandbox_work)
+    diff = diff_dirs(
+        project, sandbox_work, candidate_placeholder_map=placeholder_map
+    )
     diff_path = sandbox_dir / "diff.json"
     atomic_write_bytes(diff_path, json.dumps(diff.to_dict(), indent=2).encode("utf-8"))
     update_sandbox_status(sandbox_id, "complete" if completed.returncode == 0 else "command_failed")

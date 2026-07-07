@@ -6,7 +6,9 @@ object store, records file versions and deletion markers in SQLite, restores
 captured versions, and runs risky commands in a disposable project copy.
 
 SafeVault can restore only versions that were already captured by SafeVault
-snapshots. It is not a replacement for system backups or off-machine backups.
+snapshots. Content objects are addressed by BLAKE3 hash and verified before
+read or restore. It is not a replacement for system backups or off-machine
+backups.
 
 ## What It Does Not Do
 
@@ -45,6 +47,8 @@ safevault init ~/Projects/myapp
 safevault snapshot ~/Projects/myapp --reason initial
 safevault versions ~/Projects/myapp/file.py
 safevault restore ~/Projects/myapp/file.py --latest
+safevault status ~/Projects/myapp
+safevault verify --deep
 ```
 
 By default SafeVault stores data in `~/.safevault`. Set `SAFEVAULT_HOME` to use
@@ -90,7 +94,10 @@ External symlinks are not preserved as active symlinks in the sandbox. If a
 project symlink points outside the protected root, SafeVault writes a regular
 placeholder file instead, preventing sandbox commands from writing through that
 link to outside files. Internal symlinks are preserved only when they still
-resolve inside the sandbox copy.
+resolve inside the sandbox copy. External symlink placeholders are recorded in
+`SAFEVAULT_HOME/sandboxes/<sandbox-id>/placeholder-map.json`; ordinary files are
+not treated as placeholders merely because their content starts with a
+SafeVault sentinel.
 
 If an external symlink is not modified by the sandbox command, it is treated as
 unchanged and does not appear in the sandbox diff. `safevault apply` also refuses
@@ -142,18 +149,42 @@ rejected before hashing or copying.
 ```bash
 safevault doctor
 safevault doctor --json
+safevault verify
+safevault verify --deep
 safevault prune --dry-run
 safevault prune
 ```
 
 Doctor reports ERROR-level integrity problems such as missing referenced
-objects, missing required tables, and missing registered roots. WARN-level
-findings include orphan objects, temp files, and incomplete sandbox directories;
-warnings are visible but not fatal.
+objects, corrupted referenced objects, missing required tables, and missing
+registered roots. WARN-level findings include orphan objects, temp files, and
+incomplete sandbox directories; warnings are visible but not fatal.
+
+`safevault verify` performs a fast referenced-object check. `safevault verify
+--deep` recomputes hashes for referenced objects and exits nonzero if any
+referenced object is missing or corrupted.
 
 Prune is conservative. It deletes only object-store files that look like valid
 content hashes and are not referenced by any version. It never deletes the
-database, logs, temp root, sandboxes, or invalid object filenames.
+database, logs, temp root, sandboxes, or invalid object filenames. In dry-run
+mode it reports `Would delete objects` and `Would reclaim bytes` without
+removing files.
+
+## Management
+
+```bash
+safevault roots
+safevault status ~/Projects/myapp
+safevault unprotect ~/Projects/myapp
+safevault sandbox-clean --older-than 30d --status applied
+```
+
+`roots` lists registered protected roots. `status` shows root metadata, latest
+snapshot, tracked active/deleted counts, object-store size, latest sandbox, and
+health summary. `unprotect` removes SafeVault database metadata for an exact
+registered root but does not delete project files or content objects.
+`sandbox-clean` removes only sandbox directories matching both age and status
+filters.
 
 ## Validation
 

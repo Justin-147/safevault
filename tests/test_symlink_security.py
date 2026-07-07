@@ -141,7 +141,9 @@ def _manual_symlink_sandbox(project: Path, rel_path: str, target: str) -> str:
     link = sandbox_work / rel_path
     make_symlink_or_skip(Path(target), link)
     diff = DiffResult(
-        [DiffEntry(rel_path, "created", "symlink", new_hash=hash_symlink_target(target))]
+        [DiffEntry(rel_path, "created", "symlink", new_hash=hash_symlink_target(target))],
+        original_root=str(project.resolve()),
+        sandbox_root=str(sandbox_work.resolve()),
     )
     (sandbox_root / "diff.json").write_text(json.dumps(diff.to_dict()), encoding="utf-8")
     conn = connect()
@@ -169,7 +171,11 @@ def _manual_placeholder_sandbox(
     sandbox_work.mkdir(parents=True)
     source = sandbox_work / rel_path
     source.write_bytes(payload)
-    diff = DiffResult([entry])
+    diff = DiffResult(
+        [entry],
+        original_root=str(project.resolve()),
+        sandbox_root=str(sandbox_work.resolve()),
+    )
     (sandbox_root / "diff.json").write_text(json.dumps(diff.to_dict()), encoding="utf-8")
     conn = connect()
     try:

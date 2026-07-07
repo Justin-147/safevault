@@ -151,7 +151,14 @@ def _manual_sandbox(project: Path, entry: DiffEntry) -> str:
     sandbox_work = sandbox_root / "work"
     sandbox_work.mkdir(parents=True)
     (sandbox_root / "diff.json").write_text(
-        json.dumps(DiffResult([entry]).to_dict()), encoding="utf-8"
+        json.dumps(
+            DiffResult(
+                [entry],
+                original_root=str(project.resolve()),
+                sandbox_root=str(sandbox_work.resolve()),
+            ).to_dict()
+        ),
+        encoding="utf-8",
     )
     conn = connect()
     try:

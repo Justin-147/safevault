@@ -20,6 +20,17 @@ def test_doctor_reports_missing_referenced_object(sv_home, project) -> None:
     assert digest in result.missing_objects
 
 
+def test_doctor_reports_corrupted_referenced_object(sv_home, project) -> None:
+    path = project / "a.txt"
+    path.write_text("tracked", encoding="utf-8")
+    create_snapshot(project)
+    digest = _first_content_hash()
+    object_path(digest).write_text("corrupt", encoding="utf-8")
+    result = run_doctor()
+    assert not result.healthy
+    assert digest in result.corrupted_objects
+
+
 def test_doctor_reports_orphan_object_warning(sv_home) -> None:
     digest = store_bytes(b"orphan")
     result = run_doctor()

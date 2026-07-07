@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from collections.abc import Callable
 from datetime import UTC, datetime
 from functools import wraps
@@ -12,15 +13,23 @@ from rich.console import Console
 from rich.table import Table
 
 from safevault.config import VALID_PROFILES
-from safevault.db import connect, find_containing_root, get_or_create_root
+from safevault.db import (
+    connect,
+    find_containing_root,
+    get_or_create_root,
+    get_root_by_path,
+    list_roots,
+)
 from safevault.doctor import run_doctor
 from safevault.durations import parse_duration
 from safevault.errors import FileNotTrackedError, RootNotFoundError, SafeVaultError
-from safevault.paths import ensure_home_layout
+from safevault.object_store import iter_object_hashes, object_path
+from safevault.paths import ensure_home_layout, get_sandboxes_dir
 from safevault.prune import prune_unreferenced_objects
 from safevault.restore import restore_file
 from safevault.sandbox import apply_sandbox, create_sandbox, list_sandboxes
 from safevault.snapshot import create_snapshot, relative_path
+from safevault.verify import run_verify
 from safevault.watcher import watch_roots
 
 console = Console()
@@ -227,9 +236,31 @@ def prune(
         keep_days=keep_days, max_size=max_size, dry_run=dry_run
     )
     if dry_run:
-        console.print("Dry run: no objects deleted")
-    console.print(f"Deleted objects: {deleted_count}")
-    console.print(f"Reclaimed bytes: {reclaimed}")
+        console.print(f"Would delete objects: {deleted_count}")
+        console.print(f"Would reclaim bytes: {reclaimed}")
+    else:
+        console.print(f"Deleted objects: {deleted_count}")
+        console.print(f"Reclaimed bytes: {reclaimed}")
+
+
+@app.command()
+@handle_errors
+def verify(deep: bool = typer.Option(False, "--deep")) -> None:
+    result = run_verify(deep=deep)
+    mode = "deep" if deep else "fast"
+    console.print(f"Verify mode: {mode}")
+    console.print(f"Referenced objects checked: {result.checked_objects}")
+    if result.missing_objects:
+        console.print("Missing objects:")
+        for content_hash in result.missing_objects:
+            console.print(f"- {content_hash}")
+    if result.corrupted_objects:
+        console.print("Corrupted objects:")
+        for content_hash in result.corrupted_objects:
+            console.print(f"- {content_hash}")
+    console.print("SafeVault verify healthy" if result.healthy else "SafeVault verify failed")
+    if not result.healthy:
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -254,12 +285,183 @@ def doctor(json_output: bool = typer.Option(False, "--json")) -> None:
 
 @app.command()
 @handle_errors
+def status(path: Path) -> None:
+    conn = connect()
+    try:
+        requested = path.expanduser().resolve(strict=False)
+        root = find_containing_root(conn, requested)
+        if root is None:
+            raise RootNotFoundError("path is not under a protected root")
+        latest_snapshot = conn.execute(
+            """
+            SELECT * FROM snapshots
+            WHERE root_id = ?
+            ORDER BY started_at DESC, id DESC
+            LIMIT 1
+            """,
+            (root.id,),
+        ).fetchone()
+        active_count = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM files WHERE root_id = ? AND status = 'active'",
+                (root.id,),
+            ).fetchone()[0]
+        )
+        deleted_count = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM files WHERE root_id = ? AND status = 'deleted'",
+                (root.id,),
+            ).fetchone()[0]
+        )
+        latest_sandbox = conn.execute(
+            """
+            SELECT * FROM sandboxes
+            WHERE root_id = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (root.id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    object_store_size = _object_store_size()
+    doctor_result = run_doctor()
+    health = (
+        "healthy"
+        if doctor_result.healthy
+        else f"errors={len(doctor_result.error_items)} warnings={len(doctor_result.warning_items)}"
+    )
+    table = Table("Field", "Value")
+    table.add_row("Protected root", root.path)
+    table.add_row("Root id", str(root.id))
+    table.add_row(
+        "Last snapshot",
+        "" if latest_snapshot is None else str(latest_snapshot["started_at"]),
+    )
+    table.add_row("Tracked active files", str(active_count))
+    table.add_row("Tracked deleted files", str(deleted_count))
+    table.add_row("Object store size", str(object_store_size))
+    table.add_row(
+        "Latest sandbox",
+        ""
+        if latest_sandbox is None
+        else f"{latest_sandbox['id']} ({latest_sandbox['status']})",
+    )
+    table.add_row("Health", health)
+    console.print(table)
+
+
+@app.command()
+@handle_errors
 def sandboxes(latest: bool = typer.Option(False, "--latest")) -> None:
     rows = list_sandboxes(latest=latest)
     table = Table("ID", "Original", "Created", "Status")
     for row in rows:
         table.add_row(row.id, row.original_path, row.created_at, row.status)
     console.print(table)
+
+
+@app.command(name="roots")
+@handle_errors
+def roots_command() -> None:
+    conn = connect()
+    try:
+        rows = list_roots(conn)
+    finally:
+        conn.close()
+    console.print("ID\tPath\tProfile\tCreated\tExists")
+    for root in rows:
+        console.print(
+            f"{root.id}\t{root.path}\t{root.profile}\t{root.created_at}\t"
+            f"{'yes' if Path(root.path).exists() else 'no'}"
+        )
+
+
+@app.command()
+@handle_errors
+def unprotect(path: Path) -> None:
+    requested = path.expanduser().resolve(strict=False)
+    conn = connect()
+    try:
+        root = get_root_by_path(conn, requested)
+        if root is None:
+            raise RootNotFoundError("path is not a protected root")
+        conn.execute("DELETE FROM events WHERE root_id = ?", (root.id,))
+        conn.execute(
+            """
+            DELETE FROM versions
+            WHERE file_id IN (SELECT id FROM files WHERE root_id = ?)
+               OR snapshot_id IN (SELECT id FROM snapshots WHERE root_id = ?)
+            """,
+            (root.id, root.id),
+        )
+        conn.execute("DELETE FROM files WHERE root_id = ?", (root.id,))
+        conn.execute("DELETE FROM snapshots WHERE root_id = ?", (root.id,))
+        conn.execute("DELETE FROM sandboxes WHERE root_id = ?", (root.id,))
+        conn.execute("DELETE FROM roots WHERE id = ?", (root.id,))
+        conn.commit()
+    finally:
+        conn.close()
+    console.print(f"Unprotected root {root.id}: {root.path}")
+
+
+@app.command(name="sandbox-clean")
+@handle_errors
+def sandbox_clean(
+    older_than: str = typer.Option("30d", "--older-than"),
+    status: str = typer.Option("applied", "--status"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    cutoff = datetime.now(UTC) - parse_duration(older_than)
+    sandboxes_root = get_sandboxes_dir().resolve(strict=False)
+    conn = connect()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM sandboxes WHERE status = ? ORDER BY created_at",
+            (status,),
+        ).fetchall()
+        selected = [
+            row
+            for row in rows
+            if _parse_iso_datetime(str(row["created_at"])) < cutoff
+        ]
+        cleaned = 0
+        for row in selected:
+            sandbox_dir = Path(str(row["sandbox_path"])).parent.resolve(strict=False)
+            if not (
+                sandbox_dir == sandboxes_root
+                or sandbox_dir.is_relative_to(sandboxes_root)
+            ):
+                continue
+            if not dry_run:
+                shutil.rmtree(sandbox_dir, ignore_errors=True)
+                conn.execute("DELETE FROM sandboxes WHERE id = ?", (row["id"],))
+            cleaned += 1
+        if not dry_run:
+            conn.commit()
+    finally:
+        conn.close()
+    verb = "Would clean sandboxes" if dry_run else "Cleaned sandboxes"
+    console.print(f"{verb}: {cleaned}")
+
+
+def _object_store_size() -> int:
+    total = 0
+    for content_hash in iter_object_hashes():
+        path = object_path(content_hash)
+        try:
+            total += path.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def _parse_iso_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def main() -> None:

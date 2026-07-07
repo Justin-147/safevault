@@ -68,6 +68,17 @@ def test_missing_object_gives_clear_error(runner, sv_home, project) -> None:
     assert "missing" in result.output
 
 
+def test_corrupt_object_gives_clear_error(runner, sv_home, project) -> None:
+    file_path = project / "a.txt"
+    file_path.write_text("v1", encoding="utf-8")
+    create_snapshot(project)
+    content_hash = _latest_hash()
+    object_path(content_hash).write_text("corrupt", encoding="utf-8")
+    result = runner.invoke(app, ["restore", str(file_path), "--latest"])
+    assert result.exit_code != 0
+    assert "corrupted" in result.output
+
+
 def _version_ids() -> list[int]:
     conn = connect()
     try:

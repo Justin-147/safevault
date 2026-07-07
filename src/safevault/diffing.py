@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
@@ -27,8 +28,11 @@ def _symlink_hash(path: Path) -> tuple[str, int]:
     return hash_symlink_target(target), len(symlink_payload(target))
 
 
-def build_manifest(root: Path) -> dict[str, ManifestEntry]:
+def build_manifest(
+    root: Path, placeholder_map: Mapping[str, str] | None = None
+) -> dict[str, ManifestEntry]:
     root = root.expanduser().resolve()
+    placeholder_map = placeholder_map or {}
     spec = build_pathspec()
     manifest: dict[str, ManifestEntry] = {}
     stack = [root]
@@ -57,12 +61,15 @@ def build_manifest(root: Path) -> dict[str, ManifestEntry]:
                         stack.append(path)
                     elif entry.is_file(follow_symlinks=False):
                         stat_result = path.stat()
+                        rel_path = relative_path(root, path)
                         is_placeholder, placeholder_target = (
                             is_external_symlink_placeholder_file(path)
+                            if rel_path in placeholder_map
+                            else (False, None)
                         )
                         if is_placeholder and placeholder_target is not None:
                             payload = external_symlink_placeholder(placeholder_target)
-                            manifest[relative_path(root, path)] = {
+                            manifest[rel_path] = {
                                 "file_kind": "external_symlink_placeholder",
                                 "hash": hash_bytes(payload),
                                 "size": len(payload),
@@ -70,7 +77,7 @@ def build_manifest(root: Path) -> dict[str, ManifestEntry]:
                                 "placeholder_target": placeholder_target,
                             }
                         else:
-                            manifest[relative_path(root, path)] = {
+                            manifest[rel_path] = {
                                 "file_kind": "file",
                                 "hash": hash_file(path),
                                 "size": int(stat_result.st_size),
@@ -80,9 +87,14 @@ def build_manifest(root: Path) -> dict[str, ManifestEntry]:
     return manifest
 
 
-def diff_dirs(original: Path, candidate: Path) -> DiffResult:
+def diff_dirs(
+    original: Path,
+    candidate: Path,
+    *,
+    candidate_placeholder_map: Mapping[str, str] | None = None,
+) -> DiffResult:
     old = build_manifest(original)
-    new = build_manifest(candidate)
+    new = build_manifest(candidate, candidate_placeholder_map)
     entries: list[DiffEntry] = []
     for rel_path in sorted(set(old) | set(new)):
         old_entry = old.get(rel_path)

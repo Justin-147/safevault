@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from safevault.cli import app
 from safevault.object_store import object_path, store_bytes
 from safevault.prune import prune_unreferenced_objects
 from safevault.snapshot import create_snapshot
@@ -26,6 +27,15 @@ def test_prune_dry_run_deletes_nothing(sv_home) -> None:
     deleted, _ = prune_unreferenced_objects(dry_run=True)
     assert deleted == 1
     assert object_path(digest).exists()
+
+
+def test_prune_cli_dry_run_uses_would_wording(runner, sv_home) -> None:
+    store_bytes(b"orphan")
+    result = runner.invoke(app, ["prune", "--dry-run"])
+    assert result.exit_code == 0
+    assert "Would delete objects" in result.output
+    assert "Would reclaim bytes" in result.output
+    assert "Deleted objects" not in result.output
 
 
 def _first_content_hash() -> str:

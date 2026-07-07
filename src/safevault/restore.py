@@ -14,7 +14,7 @@ from safevault.errors import (
     RootNotFoundError,
     SafeVaultError,
 )
-from safevault.object_store import has_object, object_path, read_object
+from safevault.object_store import has_object, object_path, read_object, verify_object
 from safevault.snapshot import create_snapshot, relative_path
 
 
@@ -123,6 +123,8 @@ def restore_file(
                 _backup_existing(target)
 
         content_hash = str(version["content_hash"])
+        if not verify_object(content_hash):
+            read_object(content_hash)
         if str(version["file_kind"]) == "symlink":
             _restore_symlink(target, read_object(content_hash))
         else:
