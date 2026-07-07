@@ -16,6 +16,7 @@
     <button type="submit">Apply Without Delete</button>
   </form>
   <form method="post" action="/sandboxes/{{ sandbox.id }}/apply">
+    <input type="hidden" name="allow_delete" value="false">
     <label><input type="checkbox" name="allow_delete" value="true"> Allow delete</label>
     <input name="delete_confirmation" placeholder="type ALLOW DELETE">
     <button type="submit">Apply With Delete</button>
@@ -35,4 +36,3 @@
 </table>
 {% endif %}
 {% endblock %}
-

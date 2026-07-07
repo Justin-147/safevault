@@ -5,11 +5,15 @@
   <h2>Export</h2>
   <form method="post" action="/export-import/export">
     <label>Output path <input name="output" required></label>
+    <input type="hidden" name="gzip" value="false">
     <label><input type="checkbox" name="gzip" value="true"> gzip</label>
+    <input type="hidden" name="overwrite" value="false">
     <label><input type="checkbox" name="overwrite" value="true"> overwrite</label>
     <input name="overwrite_confirmation" placeholder="type OVERWRITE EXPORT">
+    <input type="hidden" name="skip_verify" value="false">
     <label><input type="checkbox" name="skip_verify" value="true"> skip verify (not recommended)</label>
     <input name="skip_verify_confirmation" placeholder="type SKIP VERIFY">
+    <input type="hidden" name="allow_inside_vault" value="false">
     <label><input type="checkbox" name="allow_inside_vault" value="true"> allow inside SAFEVAULT_HOME</label>
     <button type="submit">Export</button>
   </form>
@@ -21,9 +25,12 @@
   <form method="post" action="/export-import/import">
     <label>Input archive <input name="input_path" required></label>
     <label>Target home <input name="target_home" required></label>
+    <input type="hidden" name="dry_run" value="false">
     <label><input type="checkbox" name="dry_run" value="true" checked> dry-run</label>
+    <input type="hidden" name="confirm" value="false">
     <label><input type="checkbox" name="confirm" value="true"> confirm</label>
     <input name="import_confirmation" placeholder="type IMPORT">
+    <input type="hidden" name="overwrite" value="false">
     <label><input type="checkbox" name="overwrite" value="true"> overwrite</label>
     <input name="overwrite_confirmation" placeholder="type OVERWRITE">
     <button type="submit">Import</button>

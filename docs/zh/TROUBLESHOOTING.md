@@ -26,6 +26,8 @@ diff 里有受保护路径、外部 symlink、缺失 hash 或特殊文件。Safe
 
 archive 路径、manifest、SQLite 完整性或对象 hash 不符合要求。只导入你信任的 archive。
 
+GUI import 默认 dry-run。如果你已经输入 `IMPORT` 但目标没有生成，请确认是否仍然勾选了 dry-run。真正导入需要取消 dry-run、勾选 confirm，并输入 `IMPORT`；覆盖目标还需要 `OVERWRITE`。
+
 ## 6.1 GUI confirmation rejected
 
 确认词必须完全匹配，例如 `RESTORE`、`CLEAN SANDBOXES`、`OVERWRITE EXPORT`、`SKIP VERIFY`、`IMPORT`、`OVERWRITE`。大小写或空格不一致都会被拒绝。

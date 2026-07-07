@@ -10,6 +10,10 @@ echo "hello" > "$PROJECT/a.txt"
 
 python -m safevault init "$PROJECT"
 python -m safevault snapshot "$PROJECT" --reason gui-smoke
+ARCHIVE="$ROOT/export.tar"
+DRY_TARGET="$ROOT/import-dry-run"
+IMPORT_TARGET="$ROOT/imported-home"
+python -m safevault export --output "$ARCHIVE"
 
 PORT="${SAFEVAULT_GUI_SMOKE_PORT:-8765}"
 TOKEN="test-token"
@@ -27,6 +31,25 @@ for _ in $(seq 1 20); do
   if curl -fsS "http://127.0.0.1:$PORT/?token=$TOKEN" >/dev/null; then
     curl -fsS "http://127.0.0.1:$PORT/roots" --cookie "safevault_ui_token=$TOKEN" >/dev/null
     curl -fsS "http://127.0.0.1:$PORT/maintenance" --cookie "safevault_ui_token=$TOKEN" >/dev/null
+    curl -fsS -X POST "http://127.0.0.1:$PORT/export-import/import" \
+      --cookie "safevault_ui_token=$TOKEN" \
+      --data-urlencode "input_path=$ARCHIVE" \
+      --data-urlencode "target_home=$DRY_TARGET" \
+      -d "dry_run=false" \
+      -d "dry_run=true" \
+      -d "confirm=false" >/dev/null
+    test ! -e "$DRY_TARGET"
+    curl -fsS -X POST "http://127.0.0.1:$PORT/export-import/import" \
+      --cookie "safevault_ui_token=$TOKEN" \
+      --data-urlencode "input_path=$ARCHIVE" \
+      --data-urlencode "target_home=$IMPORT_TARGET" \
+      -d "dry_run=false" \
+      -d "confirm=false" \
+      -d "confirm=true" \
+      -d "import_confirmation=IMPORT" \
+      -d "overwrite=false" >/dev/null
+    test -f "$IMPORT_TARGET/vault.db"
+    find "$IMPORT_TARGET/objects" -type f | grep -q .
     echo "GUI smoke test passed"
     exit 0
   fi

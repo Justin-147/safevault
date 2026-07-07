@@ -32,7 +32,7 @@ Maintenance 页面提供 doctor、verify、prune dry-run/confirm、sandbox-clean
 
 ## 7. Export/Import 页面
 
-Export 默认深度校验；skip verify 不推荐，必须输入 `SKIP VERIFY`。覆盖已有 export 文件必须输入 `OVERWRITE EXPORT`。Import 默认 dry-run，confirm 需要输入 `IMPORT`，overwrite 需要输入 `OVERWRITE`。即使勾选 confirm，只要 dry-run 仍开启，就不会写入目标 SAFEVAULT_HOME。
+Export 默认深度校验；skip verify 不推荐，必须输入 `SKIP VERIFY`。覆盖已有 export 文件必须输入 `OVERWRITE EXPORT`。Import 默认 dry-run。默认表单会验证 archive，但不会写入目标 SAFEVAULT_HOME。要真正导入，需要取消 dry-run、勾选 confirm 并输入 `IMPORT`；overwrite 需要输入 `OVERWRITE`。即使勾选 confirm，只要 dry-run 仍开启，就不会写入目标 SAFEVAULT_HOME。
 
 ## 8. 常见警告含义
 

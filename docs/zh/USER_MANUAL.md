@@ -76,6 +76,9 @@ safevault import --input /external/safevault-export.tar.gz --target-home /tmp/sa
 safevault import --input /external/safevault-export.tar.gz --target-home /tmp/safevault-imported --confirm
 ```
 
+GUI 导入默认勾选 dry-run，只做校验不写入。确认真正导入时，取消 dry-run，
+勾选 confirm 并输入 `IMPORT`。如果目标需要覆盖，还必须输入 `OVERWRITE`。
+
 ## 11. 检查健康状态
 
 ```bash
@@ -99,4 +102,4 @@ safevault unprotect ~/Projects/myapp --dry-run
 safevault unprotect ~/Projects/myapp --confirm
 ```
 
-其他 GUI 确认词包括：apply 删除输入 `ALLOW DELETE`，prune 输入 `PRUNE`，覆盖导出输入 `OVERWRITE EXPORT`，跳过导出校验输入 `SKIP VERIFY`，导入输入 `IMPORT`，覆盖导入目标输入 `OVERWRITE`。
+其他 GUI 确认词包括：apply 删除输入 `ALLOW DELETE`，prune 输入 `PRUNE`，覆盖导出输入 `OVERWRITE EXPORT`，跳过导出校验输入 `SKIP VERIFY`，导入输入 `IMPORT`，覆盖导入目标输入 `OVERWRITE`。当前版本仍是 `0.1.0rc1` release candidate，不是 stable/final。

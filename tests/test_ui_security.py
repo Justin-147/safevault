@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi.testclient import TestClient
 
@@ -20,6 +21,14 @@ def _login(client: TestClient) -> None:
     assert response.status_code == 200
 
 
+def _post_form(client: TestClient, path: str, fields: list[tuple[str, str]]):
+    return client.post(
+        path,
+        content=urlencode(fields),
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+
 def _prepare_deleted_file(project: Path) -> Path:
     path = project / "recover.txt"
     path.write_text("first", encoding="utf-8")
@@ -36,6 +45,13 @@ def _make_export(project: Path, output: Path) -> Path:
     create_snapshot(project)
     export_vault(output=output)
     return output
+
+
+def _imported_object_count(target_home: Path) -> int:
+    objects = target_home / "objects"
+    if not objects.is_dir():
+        return 0
+    return sum(1 for path in objects.rglob("*") if path.is_file())
 
 
 def _insert_old_applied_sandbox(project: Path) -> tuple[str, Path]:
@@ -255,6 +271,58 @@ def test_ui_import_confirmations_and_dry_run(
         assert dry_run.status_code == 200
         assert "dry-run" in dry_run.text
         assert not target.exists()
+
+
+def test_ui_import_default_form_remains_dry_run(
+    sv_home: Path, project: Path, tmp_path: Path
+) -> None:
+    archive = _make_export(project, tmp_path / "safevault-export.tar")
+    target = tmp_path / "default-dry-run-target"
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        _login(client)
+        response = _post_form(
+            client,
+            "/export-import/import",
+            [
+                ("input_path", str(archive)),
+                ("target_home", str(target)),
+                ("dry_run", "false"),
+                ("dry_run", "true"),
+                ("confirm", "false"),
+            ],
+        )
+        assert response.status_code == 200
+        assert "dry-run" in response.text
+        assert not target.exists()
+
+
+def test_ui_import_confirm_real_browser_unchecked_dry_run_imports(
+    sv_home: Path, project: Path, tmp_path: Path
+) -> None:
+    archive = _make_export(project, tmp_path / "safevault-export.tar")
+    target = tmp_path / "imported-home"
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        _login(client)
+        response = _post_form(
+            client,
+            "/export-import/import",
+            [
+                ("input_path", str(archive)),
+                ("target_home", str(target)),
+                ("dry_run", "false"),
+                ("confirm", "false"),
+                ("confirm", "true"),
+                ("import_confirmation", "IMPORT"),
+                ("overwrite", "false"),
+            ],
+        )
+        assert response.status_code == 200
+        assert "complete" in response.text
+
+    assert (target / "vault.db").is_file()
+    assert _imported_object_count(target) >= 1
 
 
 def test_cli_ui_host_security_and_test_token(

@@ -91,6 +91,11 @@ The release check includes a real local HTTP smoke test:
 bash scripts/gui_smoke.sh
 ```
 
+GUI import is dry-run by default. To perform a real import in the browser,
+uncheck dry-run and type `IMPORT`; importing over a non-empty target additionally
+requires `OVERWRITE`. The project remains `0.1.0rc1`, a release candidate, not a
+stable/final release.
+
 ## Quickstart
 
 ```bash
@@ -255,6 +260,10 @@ hash contents. Import trusted archives into a fresh target home whenever
 possible; importing into the current live `SAFEVAULT_HOME` or inside it is
 rejected. `retention-plan` is non-destructive and reports old versions that a
 future retention policy could remove.
+
+The GUI import form mirrors this safety model: it is checked as dry-run by
+default. A confirmed browser import requires unchecking dry-run and typing
+`IMPORT`; GUI overwrite requires typing `OVERWRITE`.
 
 Export/import round-trip:
 

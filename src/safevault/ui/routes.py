@@ -355,7 +355,7 @@ def build_router() -> APIRouter:
         request: Request,
         input_path: str = Form(...),
         target_home: str = Form(...),
-        dry_run: bool = Form(True),
+        dry_run: bool = Form(False),
         confirm: bool = Form(False),
         overwrite: bool = Form(False),
         import_confirmation: str = Form(""),

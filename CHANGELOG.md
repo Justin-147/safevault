@@ -36,6 +36,9 @@ Added:
 
 Security hardening:
 - GUI restore/export/sandbox-clean confirmations were tightened for RC1.
+- GUI import dry-run checkbox semantics now match real browser form submission,
+  so unchecking dry-run can perform a confirmed import after typing `IMPORT`.
+- Release checks verify GUI/doc assets inside the built wheel.
 
 Upgrade notes:
 - Run `safevault doctor --deep` and `safevault verify --deep` after upgrading.
