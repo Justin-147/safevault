@@ -160,9 +160,23 @@ def _unchanged_external_symlink_placeholder(
 def _same_target_string(left: object, right: object) -> bool:
     if not isinstance(left, str) or not isinstance(right, str):
         return False
+    left = _strip_windows_extended_path_prefix(left)
+    right = _strip_windows_extended_path_prefix(right)
     if left == right:
+        return True
+    if os.name == "nt" and left.replace("/", "\\").casefold() == right.replace(
+        "/", "\\"
+    ).casefold():
         return True
     try:
         return Path(left).resolve(strict=False) == Path(right).resolve(strict=False)
     except OSError:
         return False
+
+
+def _strip_windows_extended_path_prefix(value: str) -> str:
+    if value.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + value[8:]
+    if value.startswith("\\\\?\\"):
+        return value[4:]
+    return value

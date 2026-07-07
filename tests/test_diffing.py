@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from conftest import make_symlink_or_skip
 from safevault import __version__
-from safevault.diffing import diff_dirs
+from safevault.diffing import _same_target_string, diff_dirs
 from safevault.errors import SafeVaultError
 from safevault.models import DiffResult
 from safevault.symlinks import external_symlink_placeholder_payload
@@ -98,6 +98,13 @@ def test_external_symlink_placeholder_is_unchanged_in_diff(tmp_path) -> None:
         candidate,
         candidate_placeholder_map={"outside-link": str(outside)},
     ).entries == []
+
+
+def test_windows_extended_path_prefix_targets_match() -> None:
+    assert _same_target_string(
+        r"\\?\C:\Users\runneradmin\AppData\Local\Temp\outside.txt",
+        r"C:\Users\runneradmin\AppData\Local\Temp\outside.txt",
+    )
 
 
 def test_modified_external_symlink_placeholder_is_reported(tmp_path) -> None:
