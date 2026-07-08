@@ -25,6 +25,7 @@ class SafeVaultEventHandler(FileSystemEventHandler):
         deleted_func: Callable[[Path, Path], None] | None = None,
         bulk_delete_threshold: int = 20,
         bulk_delete_window_seconds: float = 30,
+        bulk_delete_warning_cooldown_seconds: float = 60,
     ) -> None:
         self.root = root
         self.snapshot_func = snapshot_func or (lambda path, reason: create_snapshot(path, reason))
@@ -33,6 +34,8 @@ class SafeVaultEventHandler(FileSystemEventHandler):
         self.deleted_func = deleted_func
         self.bulk_delete_threshold = bulk_delete_threshold
         self.bulk_delete_window_seconds = bulk_delete_window_seconds
+        self.bulk_delete_warning_cooldown_seconds = bulk_delete_warning_cooldown_seconds
+        self.last_bulk_delete_warning_at = -bulk_delete_warning_cooldown_seconds
         self.pending = False
         self.last_event_at = 0.0
         self.delete_times: list[float] = []
@@ -59,7 +62,12 @@ class SafeVaultEventHandler(FileSystemEventHandler):
                     for value in self.delete_times
                     if current_time - value <= self.bulk_delete_window_seconds
                 ]
-                if len(self.delete_times) > self.bulk_delete_threshold:
+                if (
+                    len(self.delete_times) > self.bulk_delete_threshold
+                    and current_time - self.last_bulk_delete_warning_at
+                    >= self.bulk_delete_warning_cooldown_seconds
+                ):
+                    self.last_bulk_delete_warning_at = current_time
                     self.warn_func(
                         "High-risk warning: more than "
                         f"{self.bulk_delete_threshold} delete events in "
@@ -90,8 +98,25 @@ class SafeVaultEventHandler(FileSystemEventHandler):
         return True
 
     def on_any_event(self, event: FileSystemEvent) -> None:
-        src_path = getattr(event, "dest_path", None) or event.src_path
-        self.note_event(self.classify_event(event), str(src_path))
+        if event.event_type == "moved":
+            src_path = Path(str(event.src_path))
+            dest_text = getattr(event, "dest_path", "")
+            dest_path = Path(str(dest_text)) if dest_text else None
+            if self._is_under_root(src_path) and (
+                dest_path is None or not self._is_under_root(dest_path)
+            ):
+                self.note_event("deleted", src_path)
+                return
+        event_path = getattr(event, "dest_path", None) or event.src_path
+        self.note_event(self.classify_event(event), str(event_path))
+
+    def _is_under_root(self, path: Path) -> bool:
+        try:
+            resolved = path.expanduser().resolve(strict=False)
+            root = self.root.expanduser().resolve(strict=False)
+        except OSError:
+            return False
+        return resolved == root or resolved.is_relative_to(root)
 
     def stop(self) -> None:
         if self._timer is not None:

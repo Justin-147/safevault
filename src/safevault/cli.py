@@ -44,7 +44,7 @@ from safevault.importer import import_vault
 from safevault.object_store import iter_object_hashes, object_path
 from safevault.paths import ensure_home_layout, get_sandboxes_dir
 from safevault.protection import (
-    add_protected_root,
+    add_or_enable_protected_root,
     auto_detect_candidates,
     list_protection,
     pause_protected_root,
@@ -244,9 +244,10 @@ def search_command(
 def daemon_run(
     test_once: Annotated[bool, typer.Option("--test-once", hidden=True)] = False,
     poll_interval: Annotated[float, typer.Option("--poll-interval", hidden=True)] = 1.0,
+    force: bool = typer.Option(False, "--force"),
 ) -> None:
     console.print("Starting SafeVault daemon")
-    run_daemon(test_once=test_once, poll_interval_seconds=poll_interval)
+    run_daemon(test_once=test_once, poll_interval_seconds=poll_interval, force=force)
     if test_once:
         console.print("Daemon test run complete")
 
@@ -798,17 +799,24 @@ def protect_add(
     profile: str = typer.Option("coding", "--profile"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
-    root_id = add_protected_root(path, profile)
+    result = add_or_enable_protected_root(
+        path,
+        profile,
+        source="protect-add",
+        fail_if_exists=True,
+    )
     data = {
-        "root_id": root_id,
-        "path": str(path.expanduser().resolve(strict=False)),
+        "root_id": result.root_id,
+        "path": str(result.root_path),
         "profile": profile,
         "enabled": True,
+        "reenabled": result.reenabled,
     }
     if json_output:
         print_json(data)
         return
-    console.print(f"Protected root {root_id}: {data['path']}")
+    verb = "Re-enabled protected root" if result.reenabled else "Protected root"
+    console.print(f"{verb} {result.root_id}: {data['path']}")
 
 
 @protect_app.command(name="remove")

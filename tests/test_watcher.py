@@ -9,6 +9,7 @@ from safevault.watcher import SafeVaultEventHandler
 class Event:
     event_type: str
     src_path: str
+    dest_path: str = ""
     is_directory: bool = False
 
 
@@ -50,3 +51,41 @@ def test_batch_deletion_warning_triggers_over_threshold(project) -> None:
     for index in range(21):
         handler.note_event("deleted", project / f"{index}.txt", now=float(index))
     assert warnings == ["High-risk warning: more than 20 delete events in 30 seconds"]
+
+
+def test_bulk_delete_warning_is_rate_limited(project) -> None:
+    warnings = []
+    handler = SafeVaultEventHandler(
+        project,
+        snapshot_func=lambda path, reason: 1,
+        warn_func=warnings.append,
+        bulk_delete_threshold=1,
+        bulk_delete_window_seconds=30,
+        bulk_delete_warning_cooldown_seconds=60,
+    )
+
+    handler.note_event("deleted", project / "a.txt", now=1.0)
+    handler.note_event("deleted", project / "b.txt", now=2.0)
+    handler.note_event("deleted", project / "c.txt", now=3.0)
+    handler.note_event("deleted", project / "d.txt", now=63.0)
+    handler.note_event("deleted", project / "e.txt", now=64.0)
+
+    assert warnings == [
+        "High-risk warning: more than 1 delete events in 30 seconds",
+        "High-risk warning: more than 1 delete events in 30 seconds",
+    ]
+
+
+def test_move_file_out_of_root_records_deleted_marker(project, tmp_path) -> None:
+    deleted = []
+    handler = SafeVaultEventHandler(
+        project,
+        snapshot_func=lambda path, reason: 1,
+        deleted_func=lambda root, path: deleted.append((root, path)),
+    )
+    src = project / "moved.txt"
+    dest = tmp_path / "outside.txt"
+
+    handler.on_any_event(Event("moved", str(src), str(dest)))
+
+    assert deleted == [(project, src)]

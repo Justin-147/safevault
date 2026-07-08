@@ -262,8 +262,15 @@ def request_daemon_stop() -> None:
     _write_daemon_state(status="stopping", message="stop requested")
 
 
-def run_daemon(*, test_once: bool = False, poll_interval_seconds: float = 1.0) -> None:
+def run_daemon(
+    *,
+    test_once: bool = False,
+    poll_interval_seconds: float = 1.0,
+    force: bool = False,
+) -> None:
     config = load_config()
+    if not config.daemon.enabled and not force:
+        raise SafeVaultError("daemon is disabled in config; pass --force to run anyway")
     ensure_home_layout()
     with DaemonLock():
         with suppress(OSError):
@@ -587,6 +594,7 @@ def _write_daemon_state(
 ) -> None:
     now = utc_now_iso()
     stopped_at = now if status in {"stopped", "error"} else None
+    pid = os.getpid() if status == "running" else None
     conn = connect()
     try:
         conn.execute(
@@ -607,7 +615,7 @@ def _write_daemon_state(
                 stopped_at = excluded.stopped_at
             """,
             (
-                os.getpid(),
+                pid,
                 status,
                 now,
                 now,

@@ -98,7 +98,8 @@ safevault search report --deleted
 
 `protect add` 会拒绝文件系统根目录、`SAFEVAULT_HOME`、包含
 `SAFEVAULT_HOME` 的目录、重复 root，以及已配置的备份目录。`protect remove
---confirm` 只停用自动保护，不删除已有快照和对象库。
+--confirm` 只停用自动保护，不删除已有快照和对象库；再次对同一路径执行
+`protect add` 会重新启用自动保护。
 
 ## 6.2 第一次启动向导
 
@@ -145,8 +146,9 @@ safevault backup run
 safevault backup disable
 ```
 
-自动备份复用现有 export 校验路径，备份目录不能位于 `SAFEVAULT_HOME`
-或受保护 root 内。详见 [自动备份](docs/zh/automatic-backup.md)。
+自动备份复用现有 export 校验路径，备份文件名使用
+`safevault-backup-YYYYMMDD-HHMMSS-ffffff.tar.gz`，备份目录不能位于
+`SAFEVAULT_HOME` 或受保护 root 内。详见 [自动备份](docs/zh/automatic-backup.md)。
 
 ## 7. Codex 安全工作流
 

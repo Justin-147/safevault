@@ -7,6 +7,7 @@ import pytest
 
 import safevault.daemon as daemon_module
 from safevault.cli import app
+from safevault.config import DaemonConfig, SafeVaultConfig, save_config
 from safevault.daemon import (
     DaemonPolicyRegistry,
     get_daemon_lock_path,
@@ -37,6 +38,7 @@ def test_daemon_test_once_runs_startup_scan_and_updates_state(runner, sv_home, p
     assert snapshot is not None
     assert state is not None
     assert state["status"] == "stopped"
+    assert state["pid"] is None
     assert state["last_heartbeat_at"] is not None
     assert state["stopped_at"] is not None
 
@@ -195,6 +197,24 @@ def test_daemon_started_at_refreshes_on_new_run(sv_home) -> None:
         conn.close()
     assert state["status"] == "stopped"
     assert state["started_at"] != "2000-01-01T00:00:00+00:00"
+    assert state["pid"] is None
+
+
+def test_daemon_run_respects_disabled_config(runner, sv_home) -> None:
+    save_config(SafeVaultConfig(daemon=DaemonConfig(enabled=False)))
+
+    result = runner.invoke(app, ["daemon", "run", "--test-once"])
+
+    assert result.exit_code != 0
+    assert "daemon is disabled" in result.output
+
+
+def test_daemon_run_force_ignores_disabled_config(runner, sv_home) -> None:
+    save_config(SafeVaultConfig(daemon=DaemonConfig(enabled=False)))
+
+    result = runner.invoke(app, ["daemon", "run", "--test-once", "--force"])
+
+    assert result.exit_code == 0
 
 
 def test_daemon_crash_recovery_notification_still_works(sv_home) -> None:

@@ -19,7 +19,7 @@
         <input type="hidden" name="file" value="{{ entry.absolute_path }}">
         <input type="hidden" name="mode" value="latest">
         <input type="hidden" name="confirmation" value="CONFIRM">
-        <button type="submit">Restore Latest</button>
+        <button type="submit" onclick="return confirm('Restore this file to its original location?')">Restore Latest</button>
       </form>
     </td>
   </tr>

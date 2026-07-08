@@ -90,6 +90,7 @@ def build_router() -> APIRouter:
         request: Request,
         backup_target: str = Form(""),
         backup_schedule: str = Form("daily"),
+        skip_roots: bool = Form(False),
         token: str = Depends(require_token),
     ) -> HTMLResponse:
         message = None
@@ -101,6 +102,7 @@ def build_router() -> APIRouter:
                 roots=roots,
                 backup_target=backup_target,
                 backup_schedule=backup_schedule,
+                skip_roots=skip_roots,
             )
             message = (
                 f"Onboarding complete. Roots: {len(result['roots'])}; "

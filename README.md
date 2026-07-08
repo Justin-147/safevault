@@ -118,8 +118,10 @@ safevault search report --deleted
 `protect add` refuses unsafe roots: filesystem roots, `SAFEVAULT_HOME`, a
 directory containing `SAFEVAULT_HOME`, duplicate roots, and the configured
 backup target. `protect remove --confirm` disables automatic protection for a
-root but preserves existing snapshots and object-store content. Use `unprotect`
-only when you intentionally want to remove SafeVault metadata for a root.
+root but preserves existing snapshots and object-store content. Running
+`protect add` again for that disabled root re-enables automatic protection. Use
+`unprotect` only when you intentionally want to remove SafeVault metadata for a
+root.
 
 ## Daemon And Tray
 
@@ -171,7 +173,7 @@ safevault backup disable
 ```
 
 Automatic backup uses the existing verified export path. Backups are named
-`safevault-backup-YYYYMMDD-HHMMSS.tar.gz`; `safevault-latest.tar.gz` is updated
+`safevault-backup-YYYYMMDD-HHMMSS-ffffff.tar.gz`; `safevault-latest.tar.gz` is updated
 atomically when latest overwrite is enabled. Backup targets are rejected inside
 `SAFEVAULT_HOME` and inside protected roots.
 

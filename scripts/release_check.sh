@@ -9,6 +9,12 @@ python -m safevault --version
 python -m safevault daemon run --test-once
 python -m safevault tray --check
 python - <<'PY'
+from safevault import __version__
+
+assert __version__ == "0.2.0rc1"
+print("version ok")
+PY
+python - <<'PY'
 from safevault.ui.app import create_app
 app = create_app(token="test-token")
 assert app is not None

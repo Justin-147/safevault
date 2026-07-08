@@ -17,6 +17,8 @@ from safevault.db import connect, list_roots, utc_now_iso
 from safevault.errors import SafeVaultError
 from safevault.exporter import ExportResult, export_vault
 
+BACKUP_FAILURE_RETRY_INTERVAL = timedelta(hours=1)
+
 
 @dataclass(frozen=True)
 class BackupStatus:
@@ -113,8 +115,9 @@ def run_backup() -> ExportResult:
     if not config.backup.enabled or not config.backup.target:
         raise SafeVaultError("backup is not configured")
     target = Path(config.backup.target).expanduser().resolve(strict=False)
+    _validate_current_backup_target(str(target))
     target.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
     suffix = ".tar.gz" if config.backup.gzip else ".tar"
     archive_path = target / f"safevault-backup-{timestamp}{suffix}"
     job_id = _start_backup_job(target)
@@ -142,6 +145,8 @@ def run_due_backup(*, now: datetime | None = None) -> bool:
         return False
     status = get_backup_status()
     current = now or datetime.now(UTC)
+    if _recent_failure_blocks_retry(status, current):
+        return False
     last = _parse_iso(status.last_success_at) if status.last_success_at is not None else None
     next_due = next_due_after(last, config.backup.schedule, config.backup.time, current)
     if next_due is not None and current >= next_due:
@@ -175,19 +180,37 @@ def next_due_after(
             return (due_today_local + timedelta(days=1)).astimezone(UTC)
         return due_today
     if schedule == "weekly":
-        candidate_local = (
-            last.astimezone().replace(
-                hour=hour,
-                minute=minute,
-                second=0,
-                microsecond=0,
-            )
-            + timedelta(days=7)
+        earliest_local = last.astimezone() + timedelta(days=7)
+        candidate_local = earliest_local.replace(
+            hour=hour,
+            minute=minute,
+            second=0,
+            microsecond=0,
         )
+        if candidate_local < earliest_local:
+            candidate_local += timedelta(days=1)
         if candidate_local < due_today_local:
             candidate_local = due_today_local
         return candidate_local.astimezone(UTC)
     raise SafeVaultError("backup schedule must be one of: manual, daily, weekly")
+
+
+def _validate_current_backup_target(target: str | None) -> None:
+    conn = connect()
+    try:
+        roots = [Path(root.path) for root in list_roots(conn)]
+    finally:
+        conn.close()
+    validate_backup_target(target, protected_roots=roots)
+
+
+def _recent_failure_blocks_retry(status: BackupStatus, now: datetime) -> bool:
+    if status.last_failure_at is None:
+        return False
+    failure = _parse_iso(status.last_failure_at)
+    if status.last_success_at is not None and _parse_iso(status.last_success_at) >= failure:
+        return False
+    return now - failure < BACKUP_FAILURE_RETRY_INTERVAL
 
 
 def _parse_time_of_day(value: str) -> tuple[int, int]:

@@ -4,9 +4,14 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from safevault.backup import get_backup_status, next_due_after, run_due_backup
+import pytest
+
+import safevault.backup as backup_module
+from safevault.backup import get_backup_status, next_due_after, run_backup, run_due_backup
 from safevault.cli import app
+from safevault.config import BackupConfig, SafeVaultConfig, save_config
 from safevault.db import connect, utc_now_iso
+from safevault.errors import SafeVaultError
 from safevault.snapshot import create_snapshot
 
 
@@ -87,6 +92,40 @@ def test_backup_configure_does_not_create_rejected_target_inside_protected_root(
     assert not target.exists()
 
 
+def test_run_backup_rejects_manually_edited_target_inside_safevault(
+    sv_home, tmp_path: Path
+) -> None:
+    sv_home.mkdir(parents=True, exist_ok=True)
+    target = sv_home / "manual-backups"
+    (sv_home / "config.toml").write_text(
+        "[backup]\n"
+        "enabled = true\n"
+        f"target = {json.dumps(str(target))}\n"
+        "schedule = \"manual\"\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SafeVaultError, match="SAFEVAULT_HOME"):
+        run_backup()
+    assert not target.exists()
+
+
+def test_run_backup_rejects_manually_edited_target_inside_protected_root(
+    sv_home, project, tmp_path: Path
+) -> None:
+    create_snapshot(project)
+    target = project / "manual-backups"
+    save_config(
+        SafeVaultConfig(
+            backup=BackupConfig(enabled=True, target=str(target), schedule="manual")
+        )
+    )
+
+    with pytest.raises(SafeVaultError, match="protected root"):
+        run_backup()
+    assert not target.exists()
+
+
 def test_due_backup_runs_after_interval(runner, sv_home, project, tmp_path: Path) -> None:
     (project / "tracked.txt").write_text("tracked", encoding="utf-8")
     create_snapshot(project)
@@ -159,6 +198,33 @@ def test_backup_job_records_failure(runner, sv_home, tmp_path: Path) -> None:
 
     assert status.last_failure_at is not None
     assert status.last_error == "boom"
+
+
+def test_failed_backup_not_retried_every_poll(runner, sv_home, tmp_path: Path) -> None:
+    target = tmp_path / "retry-backups"
+    assert (
+        runner.invoke(
+            app,
+            ["backup", "configure", "--target", str(target), "--time", "00:00"],
+        ).exit_code
+        == 0
+    )
+    now = datetime(2026, 7, 8, 1, 0, tzinfo=UTC)
+    finished = now.isoformat(timespec="microseconds")
+    conn = connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO backup_jobs(started_at, finished_at, status, target_path, error)
+            VALUES (?, ?, 'failed', ?, 'boom')
+            """,
+            (finished, finished, str(target)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert run_due_backup(now=now + timedelta(minutes=30)) is False
 
 
 def test_backup_configure_accepts_time(runner, sv_home, tmp_path: Path) -> None:
@@ -247,3 +313,42 @@ def test_run_due_backup_weekly_respects_interval_and_time() -> None:
 
     assert next_due is not None
     assert next_due > now
+
+
+def test_weekly_backup_respects_min_interval() -> None:
+    last = datetime(2026, 7, 5, 1, 0, tzinfo=UTC)
+    now = datetime(2026, 7, 8, 23, 0, tzinfo=UTC)
+
+    next_due = next_due_after(last, "weekly", "00:00", now)
+
+    assert next_due is not None
+    assert next_due >= last + timedelta(days=7)
+
+
+def test_two_backups_in_same_second_do_not_collide(
+    runner, sv_home, project, tmp_path: Path, monkeypatch
+) -> None:
+    (project / "tracked.txt").write_text("tracked", encoding="utf-8")
+    create_snapshot(project)
+    target = tmp_path / "collision-backups"
+    assert runner.invoke(app, ["backup", "configure", "--target", str(target)]).exit_code == 0
+
+    class SequencedDateTime(datetime):
+        values = [
+            datetime(2026, 7, 8, 1, 2, 3, 100000, tzinfo=UTC),
+            datetime(2026, 7, 8, 1, 2, 3, 100001, tzinfo=UTC),
+        ]
+
+        @classmethod
+        def now(cls, tz=None):
+            value = cls.values.pop(0)
+            return value if tz is None else value.astimezone(tz)
+
+    monkeypatch.setattr(backup_module, "datetime", SequencedDateTime)
+
+    first = run_backup().output
+    second = run_backup().output
+
+    assert first != second
+    assert first.is_file()
+    assert second.is_file()

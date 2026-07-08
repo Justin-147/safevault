@@ -19,6 +19,8 @@ from safevault.errors import RootNotFoundError, SafeVaultError
 from safevault.models import ProtectionPolicy
 from safevault.paths import get_safevault_home
 
+UNSAFE_ROOT_NAMES = {".safevault", "dist", "build", "node_modules"}
+
 
 @dataclass(frozen=True)
 class AutoProtectCandidate:
@@ -28,6 +30,13 @@ class AutoProtectCandidate:
     reason: str
 
 
+@dataclass(frozen=True)
+class ProtectedRootRegistration:
+    root_id: int
+    root_path: Path
+    reenabled: bool
+
+
 def register_protected_root(
     path: Path,
     profile: str,
@@ -35,6 +44,21 @@ def register_protected_root(
     source: str,
     fail_if_exists: bool = False,
 ) -> int:
+    return add_or_enable_protected_root(
+        path,
+        profile,
+        source=source,
+        fail_if_exists=fail_if_exists,
+    ).root_id
+
+
+def add_or_enable_protected_root(
+    path: Path,
+    profile: str,
+    *,
+    source: str,
+    fail_if_exists: bool = False,
+) -> ProtectedRootRegistration:
     root_path = validate_protection_path(path)
     if profile not in VALID_PROFILES:
         raise SafeVaultError(
@@ -43,11 +67,35 @@ def register_protected_root(
     conn = connect()
     try:
         existing = get_root_by_path(conn, root_path)
-        if existing is not None and fail_if_exists:
-            raise SafeVaultError(f"root is already protected: {root_path}")
+        if existing is not None:
+            policy = _policy_for_root(conn, existing.id)
+            if policy.enabled:
+                if fail_if_exists:
+                    raise SafeVaultError(f"root is already protected: {root_path}")
+                return ProtectedRootRegistration(existing.id, root_path, reenabled=False)
+            if not fail_if_exists:
+                return ProtectedRootRegistration(existing.id, root_path, reenabled=False)
+            conn.execute(
+                "UPDATE roots SET profile = ? WHERE id = ?",
+                (profile, existing.id),
+            )
+            conn.execute(
+                """
+                UPDATE protection_policies
+                SET enabled = 1,
+                    watch_enabled = 1,
+                    profile = ?,
+                    paused_until = NULL,
+                    updated_at = ?
+                WHERE root_id = ?
+                """,
+                (profile, utc_now_iso(), existing.id),
+            )
+            conn.commit()
+            return ProtectedRootRegistration(existing.id, root_path, reenabled=True)
         root_id = get_or_create_root(conn, root_path, profile)
         conn.commit()
-        return root_id
+        return ProtectedRootRegistration(root_id, root_path, reenabled=False)
     finally:
         conn.close()
 
@@ -169,6 +217,8 @@ def root_safety_issue(path: Path) -> str | None:
         return f"path is not a directory: {root_path}"
     if _is_filesystem_root(root_path):
         return "cannot protect a filesystem root"
+    if root_path.name in UNSAFE_ROOT_NAMES:
+        return f"cannot protect generated or internal directory: {root_path.name}"
     if issue := _safevault_home_issue(root_path):
         return issue
     if issue := _backup_target_issue(root_path):

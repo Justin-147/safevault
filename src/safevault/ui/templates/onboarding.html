@@ -16,6 +16,10 @@
     <tr><td colspan="4">No common folders detected. You can add folders after setup.</td></tr>
     {% endfor %}
   </table>
+  <label>
+    <input type="checkbox" name="skip_roots" value="true">
+    Skip adding protected folders for now
+  </label>
 
   <h2>自动备份</h2>
   <label>Backup target <input name="backup_target" placeholder="D:\SafeVaultBackups"></label>

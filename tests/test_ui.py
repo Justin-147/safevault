@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from safevault.config import BackupConfig, SafeVaultConfig, load_config, save_config
 from safevault.db import connect
+from safevault.protection import add_protected_root, remove_protected_root
 from safevault.sandbox import create_sandbox
 from safevault.snapshot import create_snapshot
 from safevault.ui.app import create_app
@@ -125,6 +126,18 @@ def test_ui_add_root_rejects_safevault_home(sv_home: Path) -> None:
     assert "SAFEVAULT_HOME" in response.text
 
 
+def test_ui_add_root_rejects_filesystem_root(sv_home: Path, tmp_path: Path) -> None:
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        response = client.post(
+            "/roots/add",
+            data={"path": tmp_path.anchor, "profile": "coding"},
+        )
+
+    assert response.status_code == 200
+    assert "filesystem root" in response.text
+
+
 def test_ui_add_root_rejects_backup_target(
     sv_home: Path, project: Path, tmp_path: Path
 ) -> None:
@@ -164,6 +177,37 @@ def test_ui_add_root_rejects_duplicate_with_clear_message(
     assert first.status_code == 200
     assert second.status_code == 200
     assert "already protected" in second.text
+
+
+def test_ui_add_root_reenables_disabled_root(sv_home: Path, project: Path) -> None:
+    add_protected_root(project, "coding")
+    remove_protected_root(project)
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        response = client.post(
+            "/roots/add",
+            data={"path": str(project), "profile": "documents"},
+        )
+
+    assert response.status_code == 200
+    conn = connect()
+    try:
+        row = conn.execute(
+            """
+            SELECT p.enabled, p.watch_enabled, p.paused_until, p.profile
+            FROM protection_policies p
+            JOIN roots r ON r.id = p.root_id
+            WHERE r.path = ?
+            """,
+            (str(project.resolve()),),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row["enabled"] == 1
+    assert row["watch_enabled"] == 1
+    assert row["paused_until"] is None
+    assert row["profile"] == "documents"
 
 
 def test_onboarding_backup_target_inside_selected_root_is_rejected(

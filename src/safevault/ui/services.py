@@ -25,7 +25,11 @@ from safevault.importer import ImportResult, import_vault
 from safevault.models import ApplyResult, DiffResult
 from safevault.object_store import iter_object_hashes, object_path
 from safevault.paths import get_safevault_home, get_sandboxes_dir
-from safevault.protection import auto_detect_candidates, register_protected_root
+from safevault.protection import (
+    auto_detect_candidates,
+    register_protected_root,
+    validate_protection_path,
+)
 from safevault.prune import prune_unreferenced_objects
 from safevault.recent import list_recent_deleted, list_recent_modified, search_files
 from safevault.restore import restore_file
@@ -185,14 +189,16 @@ def complete_onboarding_from_ui(
     roots: list[str],
     backup_target: str,
     backup_schedule: str,
+    skip_roots: bool = False,
 ) -> dict[str, list[int]]:
     created_roots: list[int] = []
     snapshots: list[int] = []
-    selected_roots = [
-        Path(root_text).expanduser().resolve(strict=False) for root_text in roots
-    ]
-    if backup_target.strip():
-        validate_backup_target(backup_target, protected_roots=selected_roots)
+    selected_roots = validate_onboarding_inputs(
+        roots=roots,
+        backup_target=backup_target,
+        backup_schedule=backup_schedule,
+        skip_roots=skip_roots,
+    )
     candidate_profiles = {
         str(Path(candidate.path).resolve(strict=False)): candidate.profile
         for candidate in auto_detect_candidates()
@@ -212,6 +218,48 @@ def complete_onboarding_from_ui(
     config = load_config()
     save_config(replace(config, app=replace(config.app, onboarding_completed=True)))
     return {"roots": created_roots, "snapshots": snapshots}
+
+
+def validate_onboarding_inputs(
+    *,
+    roots: list[str],
+    backup_target: str,
+    backup_schedule: str,
+    skip_roots: bool = False,
+) -> list[Path]:
+    _backup_schedule_for_ui(backup_schedule)
+    selected_roots = _dedupe_paths(
+        validate_protection_path(Path(root_text)) for root_text in roots
+    )
+    if not selected_roots and not skip_roots:
+        raise SafeVaultError("select at least one protected root or explicitly skip")
+    if backup_target.strip():
+        existing_roots = _existing_root_paths()
+        validate_backup_target(
+            backup_target,
+            protected_roots=[*existing_roots, *selected_roots],
+        )
+    return selected_roots
+
+
+def _dedupe_paths(paths) -> list[Path]:
+    result: list[Path] = []
+    seen: set[str] = set()
+    for path in paths:
+        key = str(path).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(path)
+    return result
+
+
+def _existing_root_paths() -> list[Path]:
+    conn = connect()
+    try:
+        return [Path(root.path) for root in list_roots(conn)]
+    finally:
+        conn.close()
 
 
 def backup_status_for_ui():

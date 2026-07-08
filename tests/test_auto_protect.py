@@ -109,6 +109,26 @@ def test_protect_add_rejects_duplicate_root(runner, sv_home, project) -> None:
     assert "already protected" in result.output
 
 
+def test_protect_add_reenables_disabled_root(runner, sv_home, project) -> None:
+    added = runner.invoke(app, ["protect", "add", str(project), "--profile", "coding"])
+    assert added.exit_code == 0
+    assert runner.invoke(app, ["protect", "remove", str(project), "--confirm"]).exit_code == 0
+
+    result = runner.invoke(
+        app,
+        ["protect", "add", str(project), "--profile", "documents", "--json"],
+    )
+
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["reenabled"] is True
+    policies = json.loads(runner.invoke(app, ["protect", "list", "--json"]).output)
+    assert policies[0]["enabled"] is True
+    assert policies[0]["watch_enabled"] is True
+    assert policies[0]["paused_until"] is None
+    assert policies[0]["profile"] == "documents"
+
+
 def test_protect_add_rejects_safevault_home(runner, sv_home) -> None:
     sv_home.mkdir(parents=True)
 
@@ -197,6 +217,16 @@ def test_protect_add_rejects_filesystem_root(runner, sv_home, tmp_path: Path) ->
 
     assert result.exit_code != 0
     assert "filesystem root" in result.output
+
+
+def test_protect_add_rejects_generated_directory_name(runner, sv_home, tmp_path: Path) -> None:
+    generated = tmp_path / "node_modules"
+    generated.mkdir()
+
+    result = runner.invoke(app, ["protect", "add", str(generated)])
+
+    assert result.exit_code != 0
+    assert "generated or internal directory" in result.output
 
 
 def test_protect_auto_detect_lists_existing_safe_candidates(

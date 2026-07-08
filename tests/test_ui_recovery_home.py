@@ -93,3 +93,20 @@ def test_one_click_restore_uses_normal_confirmation(sv_home: Path, project: Path
     assert response.status_code == 200
     assert "Restored to" in response.text
     assert target.read_text(encoding="utf-8") == "second"
+
+
+def test_recovery_home_restore_button_has_confirm_dialog(
+    sv_home: Path, project: Path
+) -> None:
+    _complete_onboarding_config()
+    target = project / "confirm-restore.txt"
+    target.write_text("first", encoding="utf-8")
+    create_snapshot(project)
+    target.unlink()
+    create_snapshot(project)
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        response = client.get("/", params={"token": TOKEN})
+
+    assert response.status_code == 200
+    assert "onclick=\"return confirm(" in response.text
