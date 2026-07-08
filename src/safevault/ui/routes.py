@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 
+from safevault.config import VALID_PROFILES
 from safevault.errors import SafeVaultError
 from safevault.ui import services
 from safevault.ui.auth import UI_COOKIE_NAME, require_token
@@ -43,12 +44,91 @@ def build_router() -> APIRouter:
     router = APIRouter()
 
     @router.get("/", response_class=HTMLResponse)
-    def dashboard(request: Request, token: str = Depends(require_token)) -> HTMLResponse:
+    def dashboard(
+        request: Request,
+        q: str = "",
+        deleted: bool = False,
+        token: str = Depends(require_token),
+    ) -> HTMLResponse:
         try:
+            if services.should_show_onboarding():
+                return _render(
+                    request,
+                    "onboarding.html",
+                    token,
+                    candidates=services.onboarding_candidates_for_ui(),
+                )
             status = services.get_dashboard_status()
-            return _render(request, "dashboard.html", token, status=status)
+            return _render(
+                request,
+                "dashboard.html",
+                token,
+                status=status,
+                recent_deleted=services.list_deleted_for_ui("7d")[:10],
+                recent_modified=services.list_recent_modified_for_ui("7d")[:10],
+                search_query=q,
+                search_deleted=deleted,
+                search_results=services.search_for_ui(q, deleted=deleted),
+                backup_status=services.backup_status_for_ui(),
+            )
         except SafeVaultError as exc:
             return _render(request, "dashboard.html", token, error=_error_message(exc))
+
+    @router.get("/onboarding", response_class=HTMLResponse)
+    def onboarding_page(
+        request: Request, token: str = Depends(require_token)
+    ) -> HTMLResponse:
+        return _render(
+            request,
+            "onboarding.html",
+            token,
+            candidates=services.onboarding_candidates_for_ui(),
+        )
+
+    @router.post("/onboarding", response_class=HTMLResponse)
+    async def onboarding_complete(
+        request: Request,
+        backup_target: str = Form(""),
+        backup_schedule: str = Form("daily"),
+        token: str = Depends(require_token),
+    ) -> HTMLResponse:
+        message = None
+        error = None
+        try:
+            form = await request.form()
+            roots = [str(value) for value in form.getlist("roots")]
+            result = services.complete_onboarding_from_ui(
+                roots=roots,
+                backup_target=backup_target,
+                backup_schedule=backup_schedule,
+            )
+            message = (
+                f"Onboarding complete. Roots: {len(result['roots'])}; "
+                f"initial snapshots: {len(result['snapshots'])}"
+            )
+            status = services.get_dashboard_status()
+            return _render(
+                request,
+                "dashboard.html",
+                token,
+                status=status,
+                recent_deleted=services.list_deleted_for_ui("7d")[:10],
+                recent_modified=services.list_recent_modified_for_ui("7d")[:10],
+                search_query="",
+                search_deleted=False,
+                search_results=[],
+                backup_status=services.backup_status_for_ui(),
+                message=message,
+            )
+        except SafeVaultError as exc:
+            error = _error_message(exc)
+        return _render(
+            request,
+            "onboarding.html",
+            token,
+            candidates=services.onboarding_candidates_for_ui(),
+            error=error,
+        )
 
     @router.get("/roots", response_class=HTMLResponse)
     def roots_page(request: Request, token: str = Depends(require_token)) -> HTMLResponse:
@@ -57,7 +137,7 @@ def build_router() -> APIRouter:
             "roots.html",
             token,
             roots=services.list_roots_for_ui(),
-            profiles=["coding", "documents"],
+            profiles=sorted(VALID_PROFILES),
         )
 
     @router.post("/roots/add", response_class=HTMLResponse)
@@ -79,7 +159,7 @@ def build_router() -> APIRouter:
             "roots.html",
             token,
             roots=services.list_roots_for_ui(),
-            profiles=["coding", "documents"],
+            profiles=sorted(VALID_PROFILES),
             message=message,
             error=error,
         )
@@ -320,6 +400,32 @@ def build_router() -> APIRouter:
     ) -> HTMLResponse:
         return _render(request, "export_import.html", token)
 
+    @router.post("/backup/run", response_class=HTMLResponse)
+    def backup_run_action(
+        request: Request, token: str = Depends(require_token)
+    ) -> HTMLResponse:
+        message = None
+        error = None
+        try:
+            result = services.run_backup_from_ui()
+            message = f"Backup complete: {result.output}"
+        except SafeVaultError as exc:
+            error = _error_message(exc)
+        return _render(
+            request,
+            "dashboard.html",
+            token,
+            status=services.get_dashboard_status(),
+            recent_deleted=services.list_deleted_for_ui("7d")[:10],
+            recent_modified=services.list_recent_modified_for_ui("7d")[:10],
+            search_query="",
+            search_deleted=False,
+            search_results=[],
+            backup_status=services.backup_status_for_ui(),
+            message=message,
+            error=error,
+        )
+
     @router.post("/export-import/export", response_class=HTMLResponse)
     def export_action(
         request: Request,
@@ -397,6 +503,11 @@ def build_router() -> APIRouter:
             "FAQ.md",
             "TROUBLESHOOTING.md",
             "SAFETY_MODEL.md",
+            "auto-protection.md",
+            "daemon-tray.md",
+            "one-click-restore.md",
+            "automatic-backup.md",
+            "onboarding.md",
         }
         if doc_name not in allowed:
             return PlainTextResponse("Not found", status_code=404)

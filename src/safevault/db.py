@@ -5,10 +5,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from safevault.errors import SafeVaultError
-from safevault.models import Root
+from safevault.models import ProtectionPolicy, Root
 from safevault.paths import ensure_home_layout, get_db_path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def utc_now_iso() -> str:
@@ -141,13 +141,128 @@ def set_user_version(conn: sqlite3.Connection, version: int) -> None:
 
 
 def migrate(conn: sqlite3.Connection) -> None:
+    ensure_migrations_table(conn)
     version = get_user_version(conn)
     if version > SCHEMA_VERSION:
         raise SafeVaultError(
             f"database schema version {version} is newer than supported {SCHEMA_VERSION}"
         )
-    if version < SCHEMA_VERSION:
-        set_user_version(conn, SCHEMA_VERSION)
+    if version < 1:
+        record_migration(conn, 1)
+        set_user_version(conn, 1)
+        version = 1
+    if version < 2:
+        migrate_to_v2(conn)
+        set_user_version(conn, 2)
+
+
+def ensure_migrations_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def record_migration(conn: sqlite3.Connection, version: int) -> None:
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+        VALUES (?, ?)
+        """,
+        (version, utc_now_iso()),
+    )
+
+
+def migrate_to_v2(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS protection_policies (
+            id INTEGER PRIMARY KEY,
+            root_id INTEGER NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            profile TEXT NOT NULL,
+            auto_snapshot INTEGER NOT NULL DEFAULT 1,
+            watch_enabled INTEGER NOT NULL DEFAULT 1,
+            hourly_snapshot INTEGER NOT NULL DEFAULT 1,
+            daily_snapshot INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            paused_until TEXT,
+            FOREIGN KEY(root_id) REFERENCES roots(id)
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_protection_policies_root
+            ON protection_policies(root_id);
+
+        CREATE TABLE IF NOT EXISTS daemon_state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            pid INTEGER,
+            status TEXT NOT NULL,
+            started_at TEXT,
+            last_heartbeat_at TEXT,
+            message TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS change_batches (
+            id TEXT PRIMARY KEY,
+            root_id INTEGER NOT NULL,
+            started_at TEXT NOT NULL,
+            last_event_at TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_count INTEGER NOT NULL DEFAULT 0,
+            modified_count INTEGER NOT NULL DEFAULT 0,
+            deleted_count INTEGER NOT NULL DEFAULT 0,
+            snapshot_id INTEGER,
+            FOREIGN KEY(root_id) REFERENCES roots(id),
+            FOREIGN KEY(snapshot_id) REFERENCES snapshots(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_change_batches_root_status
+            ON change_batches(root_id, status, last_event_at);
+
+        CREATE TABLE IF NOT EXISTS backup_jobs (
+            id INTEGER PRIMARY KEY,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            status TEXT NOT NULL,
+            target_path TEXT NOT NULL,
+            archive_path TEXT,
+            object_count INTEGER,
+            error TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY,
+            kind TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            read_at TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_notifications_created
+            ON notifications(created_at);
+        """
+    )
+    now = utc_now_iso()
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO protection_policies(
+            root_id, enabled, profile, auto_snapshot, watch_enabled,
+            hourly_snapshot, daily_snapshot, created_at, updated_at, paused_until
+        )
+        SELECT id, 1, profile, 1, 1, 1, 1, ?, ?, NULL
+        FROM roots
+        """,
+        (now, now),
+    )
+    record_migration(conn, 2)
 
 
 def _root_from_row(row: sqlite3.Row | None) -> Root | None:
@@ -161,6 +276,25 @@ def _root_from_row(row: sqlite3.Row | None) -> Root | None:
     )
 
 
+def _policy_from_row(row: sqlite3.Row | None) -> ProtectionPolicy | None:
+    if row is None:
+        return None
+    return ProtectionPolicy(
+        id=int(row["policy_id"]),
+        root_id=int(row["root_id"]),
+        root_path=str(row["root_path"]),
+        enabled=bool(int(row["enabled"])),
+        profile=str(row["profile"]),
+        auto_snapshot=bool(int(row["auto_snapshot"])),
+        watch_enabled=bool(int(row["watch_enabled"])),
+        hourly_snapshot=bool(int(row["hourly_snapshot"])),
+        daily_snapshot=bool(int(row["daily_snapshot"])),
+        created_at=str(row["created_at"]),
+        updated_at=str(row["updated_at"]),
+        paused_until=None if row["paused_until"] is None else str(row["paused_until"]),
+    )
+
+
 def normalize_path(path: Path) -> str:
     return str(path.expanduser().resolve())
 
@@ -169,14 +303,78 @@ def get_or_create_root(conn: sqlite3.Connection, path: Path, profile: str) -> in
     normalized = normalize_path(path)
     row = conn.execute("SELECT id FROM roots WHERE path = ?", (normalized,)).fetchone()
     if row:
-        return int(row["id"])
+        root_id = int(row["id"])
+        ensure_protection_policy(conn, root_id, profile)
+        conn.commit()
+        return root_id
     cur = conn.execute(
         "INSERT INTO roots(path, created_at, profile) VALUES (?, ?, ?)",
         (normalized, utc_now_iso(), profile),
     )
+    assert cur.lastrowid is not None
+    root_id = int(cur.lastrowid)
+    ensure_protection_policy(conn, root_id, profile)
     conn.commit()
+    return root_id
+
+
+def ensure_protection_policy(conn: sqlite3.Connection, root_id: int, profile: str) -> int:
+    row = conn.execute(
+        "SELECT id FROM protection_policies WHERE root_id = ?", (root_id,)
+    ).fetchone()
+    if row:
+        return int(row["id"])
+    now = utc_now_iso()
+    cur = conn.execute(
+        """
+        INSERT INTO protection_policies(
+            root_id, enabled, profile, auto_snapshot, watch_enabled,
+            hourly_snapshot, daily_snapshot, created_at, updated_at, paused_until
+        )
+        VALUES (?, 1, ?, 1, 1, 1, 1, ?, ?, NULL)
+        """,
+        (root_id, profile, now, now),
+    )
     assert cur.lastrowid is not None
     return int(cur.lastrowid)
+
+
+def set_protection_policy_enabled(
+    conn: sqlite3.Connection, root_id: int, *, enabled: bool
+) -> None:
+    ensure_protection_policy(conn, root_id, "coding")
+    conn.execute(
+        """
+        UPDATE protection_policies
+        SET enabled = ?, watch_enabled = ?, updated_at = ?, paused_until = NULL
+        WHERE root_id = ?
+        """,
+        (1 if enabled else 0, 1 if enabled else 0, utc_now_iso(), root_id),
+    )
+
+
+def list_protection_policies(conn: sqlite3.Connection) -> list[ProtectionPolicy]:
+    rows = conn.execute(
+        """
+        SELECT
+            p.id AS policy_id,
+            r.id AS root_id,
+            r.path AS root_path,
+            p.enabled,
+            p.profile,
+            p.auto_snapshot,
+            p.watch_enabled,
+            p.hourly_snapshot,
+            p.daily_snapshot,
+            p.created_at,
+            p.updated_at,
+            p.paused_until
+        FROM roots r
+        JOIN protection_policies p ON p.root_id = r.id
+        ORDER BY r.path
+        """
+    ).fetchall()
+    return [policy for row in rows if (policy := _policy_from_row(row)) is not None]
 
 
 def get_root_by_path(conn: sqlite3.Connection, path: Path) -> Root | None:

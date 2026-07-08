@@ -1,26 +1,95 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Dashboard</h1>
+<h1>SafeVault 正在保护你的文件</h1>
 {% if status %}
-<dl class="grid">
-  <dt>Version</dt><dd>{{ status.version }}</dd>
-  <dt>SAFEVAULT_HOME</dt><dd>{{ status.safevault_home }}</dd>
-  <dt>Doctor fast</dt><dd>{{ "healthy" if status.doctor_healthy else "unhealthy" }}</dd>
-  <dt>Verify fast</dt><dd>{{ "healthy" if status.verify_healthy else "unhealthy" }}</dd>
-  <dt>Roots</dt><dd>{{ status.roots_count }}</dd>
-  <dt>Snapshots</dt><dd>{{ status.snapshots_count }}</dd>
-  <dt>Tracked active/deleted</dt><dd>{{ status.active_files_count }} / {{ status.deleted_files_count }}</dd>
-  <dt>Object store size</dt><dd>{{ status.object_store_size }}</dd>
-  <dt>Latest sandbox</dt><dd>{% if status.latest_sandbox %}{{ status.latest_sandbox.id }} ({{ status.latest_sandbox.status }}){% else %}none{% endif %}</dd>
-</dl>
+<section class="status-strip">
+  <div><strong>Protected roots</strong><span>{{ status.roots_count }}</span></div>
+  <div><strong>Daemon</strong><span>{{ status.daemon_status }}</span></div>
+  <div><strong>Last snapshot</strong><span>{{ status.last_snapshot or "none" }}</span></div>
+  <div><strong>Last backup</strong><span>{{ status.last_backup or "not configured" }}</span></div>
+  <div><strong>Health</strong><span>{{ status.health_summary }}</span></div>
+</section>
 {% endif %}
-<section class="actions">
-  <a href="/roots">Roots</a>
-  <a href="/sandboxes">Sandboxes</a>
-  <a href="/deleted">Restore</a>
-  <a href="/maintenance">Maintenance</a>
-  <a href="/export-import">Export/Import</a>
-  <a href="/help">Chinese Help</a>
+
+<section class="recovery-layout">
+  <div>
+    <section class="panel">
+      <h2>最近删除的文件</h2>
+      <table>
+        <tr><th>Path</th><th>Detected</th><th>Action</th></tr>
+        {% for entry in recent_deleted %}
+        <tr>
+          <td>{{ entry.rel_path }}<br><small>{{ entry.root_path }}</small></td>
+          <td>{{ entry.detected_at }}</td>
+          <td>
+            <form method="post" action="/restore">
+              <input type="hidden" name="file" value="{{ entry.absolute_path }}">
+              <input type="hidden" name="mode" value="latest">
+              <input type="hidden" name="confirmation" value="CONFIRM">
+              <button type="submit">Restore</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3">No recent deleted files.</td></tr>
+        {% endfor %}
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>最近修改</h2>
+      <table>
+        <tr><th>Path</th><th>Event</th><th>Detected</th></tr>
+        {% for entry in recent_modified %}
+        <tr>
+          <td>{{ entry.rel_path }}<br><small>{{ entry.root_path }}</small></td>
+          <td>{{ entry.event_type }}</td>
+          <td>{{ entry.detected_at }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3">No recent modified files.</td></tr>
+        {% endfor %}
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>搜索文件</h2>
+      <form method="get" action="/">
+        <input name="q" value="{{ search_query }}" placeholder="file name or path">
+        <label><input type="checkbox" name="deleted" value="true" {% if search_deleted %}checked{% endif %}> Deleted only</label>
+        <button type="submit">Search</button>
+      </form>
+      {% if search_query %}
+      <table>
+        <tr><th>Path</th><th>Status</th><th>Action</th></tr>
+        {% for item in search_results %}
+        <tr>
+          <td>{{ item.rel_path }}<br><small>{{ item.root_path }}</small></td>
+          <td>{{ item.status }}</td>
+          <td><a href="/versions?file={{ item.absolute_path }}">Versions</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3">No matches.</td></tr>
+        {% endfor %}
+      </table>
+      {% endif %}
+    </section>
+  </div>
+
+  <aside class="panel side-panel">
+    <h2>快捷操作</h2>
+    <p><a href="/roots">Add folder</a></p>
+    <p><a href="/maintenance">Run verify</a></p>
+    <form method="post" action="/backup/run">
+      <button type="submit">Backup now</button>
+    </form>
+    <p><a href="/export-import">Export / Import</a></p>
+    {% if backup_status and not backup_status.enabled %}
+    <p class="warning">还没有设置外部备份目录。如果本机磁盘损坏，SafeVault 本地对象库也可能丢失。</p>
+    {% endif %}
+    {% if status and status.daemon_status != "running" %}
+    <p class="warning">后台保护未运行。文件变化不会被自动快照。</p>
+    {% endif %}
+  </aside>
 </section>
 {% endblock %}
-

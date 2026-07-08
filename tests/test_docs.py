@@ -36,6 +36,7 @@ def test_readme_links_chinese_documentation() -> None:
     assert "README.zh-CN.md" in readme
     assert "docs/zh/GUI_GUIDE.md" in chinese_readme
     assert "docs/zh/RECOVERY_PLAYBOOK.md" in chinese_readme
+    assert "docs/zh/auto-protection.md" in chinese_readme
 
 
 def test_chinese_readme_has_required_command_and_status_terms() -> None:
@@ -46,7 +47,7 @@ def test_chinese_readme_has_required_command_and_status_terms() -> None:
         "safevault restore",
         "safevault ui",
         "不是裸盘恢复",
-        "0.1.0rc1",
+        "0.2.0rc1",
     ):
         assert phrase in text
 

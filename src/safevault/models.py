@@ -19,6 +19,22 @@ class Root:
 
 
 @dataclass(frozen=True)
+class ProtectionPolicy:
+    id: int
+    root_id: int
+    root_path: str
+    enabled: bool
+    profile: str
+    auto_snapshot: bool
+    watch_enabled: bool
+    hourly_snapshot: bool
+    daily_snapshot: bool
+    created_at: str
+    updated_at: str
+    paused_until: str | None = None
+
+
+@dataclass(frozen=True)
 class FileRecord:
     id: int
     root_id: int

@@ -14,6 +14,8 @@ print("ui app ok")
 PY
 bash scripts/smoke.sh
 bash scripts/gui_smoke.sh
+python scripts/onboarding_smoke.py
+rm -rf dist
 python -m build
 python - <<'PY'
 from pathlib import Path
@@ -24,10 +26,16 @@ names = set(zipfile.ZipFile(wheel).namelist())
 required = [
     "safevault/ui/templates/base.html",
     "safevault/ui/templates/dashboard.html",
+    "safevault/ui/templates/onboarding.html",
     "safevault/ui/static/safevault.css",
     "safevault/ui/docs/README.zh-CN.md",
     "safevault/ui/docs/zh/GUI_GUIDE.md",
     "safevault/ui/docs/zh/USER_MANUAL.md",
+    "safevault/ui/docs/zh/auto-protection.md",
+    "safevault/ui/docs/zh/daemon-tray.md",
+    "safevault/ui/docs/zh/one-click-restore.md",
+    "safevault/ui/docs/zh/automatic-backup.md",
+    "safevault/ui/docs/zh/onboarding.md",
 ]
 missing = [name for name in required if name not in names]
 if missing:

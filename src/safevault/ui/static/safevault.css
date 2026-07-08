@@ -77,4 +77,40 @@ button {
   flex-wrap: wrap;
   gap: 10px;
 }
-
+.status-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+.status-strip div {
+  background: white;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 10px;
+}
+.status-strip strong,
+.status-strip span {
+  display: block;
+}
+.status-strip span {
+  margin-top: 6px;
+  word-break: break-word;
+}
+.recovery-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 14px;
+}
+.side-panel {
+  align-self: start;
+}
+small {
+  color: #57606a;
+  word-break: break-all;
+}
+@media (max-width: 840px) {
+  .recovery-layout {
+    grid-template-columns: 1fr;
+  }
+}

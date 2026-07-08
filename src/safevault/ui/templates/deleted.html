@@ -18,6 +18,7 @@
       <form method="post" action="/restore">
         <input type="hidden" name="file" value="{{ entry.absolute_path }}">
         <input type="hidden" name="mode" value="latest">
+        <input type="hidden" name="confirmation" value="CONFIRM">
         <button type="submit">Restore Latest</button>
       </form>
     </td>
@@ -25,4 +26,3 @@
   {% endfor %}
 </table>
 {% endblock %}
-

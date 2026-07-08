@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import json
 import shutil
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 from safevault import __version__
+from safevault.backup import configure_backup, get_backup_status, run_backup
+from safevault.config import VALID_PROFILES, BackupSchedule, load_config, save_config
+from safevault.daemon import get_daemon_status
 from safevault.db import connect, get_or_create_root, list_roots
 from safevault.doctor import DoctorResult, run_doctor
 from safevault.durations import parse_duration
@@ -15,7 +20,9 @@ from safevault.importer import ImportResult, import_vault
 from safevault.models import ApplyResult, DiffResult
 from safevault.object_store import iter_object_hashes, object_path
 from safevault.paths import get_safevault_home, get_sandboxes_dir
+from safevault.protection import auto_detect_candidates
 from safevault.prune import prune_unreferenced_objects
+from safevault.recent import list_recent_deleted, list_recent_modified, search_files
 from safevault.restore import restore_file
 from safevault.retention import RetentionPlan, build_retention_plan
 from safevault.sandbox import apply_sandbox, get_sandbox, list_sandboxes
@@ -54,6 +61,15 @@ def get_dashboard_status() -> DashboardStatus:
         deleted_files_count = int(
             conn.execute("SELECT COUNT(*) FROM files WHERE status = 'deleted'").fetchone()[0]
         )
+        last_snapshot = conn.execute(
+            """
+            SELECT started_at
+            FROM snapshots
+            WHERE status = 'complete'
+            ORDER BY started_at DESC, id DESC
+            LIMIT 1
+            """
+        ).fetchone()
         latest = conn.execute(
             "SELECT * FROM sandboxes ORDER BY created_at DESC LIMIT 1"
         ).fetchone()
@@ -66,6 +82,9 @@ def get_dashboard_status() -> DashboardStatus:
             "status": str(latest["status"]),
             "created_at": str(latest["created_at"]),
         }
+    daemon = get_daemon_status()
+    backup = get_backup_status()
+    health_summary = "OK" if doctor.healthy and verify.healthy else "Warning"
     return DashboardStatus(
         version=__version__,
         safevault_home=str(get_safevault_home()),
@@ -77,6 +96,10 @@ def get_dashboard_status() -> DashboardStatus:
         deleted_files_count=deleted_files_count,
         object_store_size=_object_store_size(),
         latest_sandbox=latest_sandbox,
+        daemon_status=daemon.status,
+        last_snapshot=None if last_snapshot is None else str(last_snapshot["started_at"]),
+        last_backup=backup.last_success_at,
+        health_summary=health_summary,
     )
 
 
@@ -126,13 +149,87 @@ def add_root_from_ui(path: Path, profile: str) -> int:
     root = path.expanduser().resolve()
     if not root.exists() or not root.is_dir():
         raise SafeVaultError(f"path is not an existing directory: {root}")
-    if profile not in {"coding", "documents"}:
-        raise SafeVaultError("profile must be coding or documents")
+    if profile not in VALID_PROFILES:
+        raise SafeVaultError("profile must be one of: " + ", ".join(sorted(VALID_PROFILES)))
     conn = connect()
     try:
         return get_or_create_root(conn, root, profile)
     finally:
         conn.close()
+
+
+def should_show_onboarding() -> bool:
+    return not load_config().app.onboarding_completed
+
+
+def onboarding_candidates_for_ui() -> list[dict[str, object]]:
+    return [
+        {
+            "path": candidate.path,
+            "profile": candidate.profile,
+            "recommended": candidate.recommended,
+            "reason": candidate.reason,
+        }
+        for candidate in auto_detect_candidates()
+    ]
+
+
+def complete_onboarding_from_ui(
+    *,
+    roots: list[str],
+    backup_target: str,
+    backup_schedule: str,
+) -> dict[str, list[int]]:
+    created_roots: list[int] = []
+    snapshots: list[int] = []
+    candidate_profiles = {
+        str(Path(candidate.path).resolve(strict=False)): candidate.profile
+        for candidate in auto_detect_candidates()
+    }
+    for root_text in roots:
+        root_path = Path(root_text).expanduser().resolve(strict=False)
+        profile = candidate_profiles.get(str(root_path), "coding")
+        try:
+            root_id = add_root_from_ui(root_path, profile)
+        except SafeVaultError as exc:
+            if "already protected" not in str(exc):
+                raise
+            root_id = _root_id_for_path(root_path)
+        created_roots.append(root_id)
+        snapshots.append(create_snapshot(root_path, reason="onboarding-initial"))
+    if backup_target.strip():
+        configure_backup(Path(backup_target), _backup_schedule_for_ui(backup_schedule))
+    config = load_config()
+    save_config(replace(config, app=replace(config.app, onboarding_completed=True)))
+    return {"roots": created_roots, "snapshots": snapshots}
+
+
+def backup_status_for_ui():
+    return get_backup_status()
+
+
+def run_backup_from_ui():
+    return run_backup()
+
+
+def _root_id_for_path(path: Path) -> int:
+    conn = connect()
+    try:
+        row = conn.execute(
+            "SELECT id FROM roots WHERE path = ?",
+            (str(path.expanduser().resolve(strict=False)),),
+        ).fetchone()
+        if row is None:
+            raise RootNotFoundError(f"root not found: {path}")
+        return int(row["id"])
+    finally:
+        conn.close()
+
+
+def _backup_schedule_for_ui(value: str) -> BackupSchedule:
+    if value not in {"manual", "daily", "weekly"}:
+        raise SafeVaultError("backup schedule must be manual, daily, or weekly")
+    return cast(BackupSchedule, value)
 
 
 def _get_root_summary(root_id: int) -> RootSummary:
@@ -245,6 +342,8 @@ def unprotect_from_ui(root_id: int, confirmation: str) -> dict[str, object]:
     conn = connect()
     try:
         with conn:
+            conn.execute("DELETE FROM change_batches WHERE root_id = ?", (root_id,))
+            conn.execute("DELETE FROM protection_policies WHERE root_id = ?", (root_id,))
             conn.execute("DELETE FROM events WHERE root_id = ?", (root_id,))
             conn.execute(
                 """
@@ -264,31 +363,46 @@ def unprotect_from_ui(root_id: int, confirmation: str) -> dict[str, object]:
 
 
 def list_deleted_for_ui(since: str = "24h") -> list[DeletedEntry]:
-    duration = parse_duration(since)
-    cutoff = (datetime.now(UTC) - duration).isoformat(timespec="microseconds")
-    conn = connect()
-    try:
-        rows = conn.execute(
-            """
-            SELECT r.path AS root_path, v.rel_path AS rel_path, v.captured_at AS detected_at
-            FROM versions v
-            JOIN files f ON f.id = v.file_id
-            JOIN roots r ON r.id = f.root_id
-            WHERE v.is_deleted_marker = 1 AND v.captured_at >= ?
-            ORDER BY detected_at DESC
-            """,
-            (cutoff,),
-        ).fetchall()
-    finally:
-        conn.close()
     return [
         DeletedEntry(
-            root_path=str(row["root_path"]),
-            rel_path=str(row["rel_path"]),
-            absolute_path=str(Path(str(row["root_path"])) / str(row["rel_path"])),
-            detected_at=str(row["detected_at"]),
+            root_path=entry.root_path,
+            rel_path=entry.rel_path,
+            absolute_path=str(Path(entry.root_path) / entry.rel_path),
+            detected_at=entry.detected_at,
         )
-        for row in rows
+        for entry in list_recent_deleted(since=since)
+    ]
+
+
+def list_recent_modified_for_ui(since: str = "24h") -> list[dict[str, object]]:
+    return [
+        {
+            "root_path": entry.root_path,
+            "rel_path": entry.rel_path,
+            "absolute_path": str(Path(entry.root_path) / entry.rel_path),
+            "detected_at": entry.detected_at,
+            "event_type": entry.event_type,
+            "size": entry.size,
+            "file_kind": entry.file_kind,
+        }
+        for entry in list_recent_modified(since=since, limit=20)
+    ]
+
+
+def search_for_ui(query: str, *, deleted: bool = False) -> list[dict[str, object]]:
+    if not query.strip():
+        return []
+    return [
+        {
+            "root_path": entry.root_path,
+            "rel_path": entry.rel_path,
+            "absolute_path": str(Path(entry.root_path) / entry.rel_path),
+            "status": entry.status,
+            "file_kind": entry.file_kind,
+            "size": entry.size,
+            "last_seen_at": entry.last_seen_at,
+        }
+        for entry in search_files(query, deleted=deleted, limit=20)
     ]
 
 
@@ -345,8 +459,12 @@ def restore_from_ui(
     to_path: Path | None,
     confirmation: str,
 ) -> Path:
-    if confirmation != "RESTORE":
-        raise SafeVaultError("type RESTORE to confirm restore")
+    config = load_config()
+    if config.app.advanced_mode:
+        if confirmation != "RESTORE":
+            raise SafeVaultError("type RESTORE to confirm restore")
+    elif confirmation not in {"CONFIRM", "RESTORE"}:
+        raise SafeVaultError("confirm restore action or type RESTORE to confirm restore")
     return restore_file(file, latest=latest, version_id=version_id, to_path=to_path)
 
 

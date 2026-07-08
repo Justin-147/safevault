@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "safevault"
-version = "0.1.0rc1"
+version = "0.2.0rc1"
 description = "Local file protection, versioned snapshots, and sandboxed command runner"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -32,6 +32,10 @@ ui = [
   "uvicorn>=0.30",
   "jinja2>=3.1",
   "python-multipart>=0.0.9",
+]
+tray = [
+  "pystray>=0.19",
+  "pillow>=10.0",
 ]
 
 [project.scripts]

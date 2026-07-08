@@ -1,22 +1,35 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import shutil
+import sys
 import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import wraps
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from safevault import __version__
-from safevault.config import VALID_PROFILES
+from safevault.backup import (
+    configure_backup,
+    disable_backup,
+    get_backup_status,
+    run_backup,
+)
+from safevault.config import VALID_PROFILES, BackupSchedule
+from safevault.daemon import (
+    get_daemon_status,
+    request_daemon_stop,
+    run_daemon,
+)
 from safevault.db import (
     connect,
     find_containing_root,
@@ -31,19 +44,45 @@ from safevault.exporter import export_vault
 from safevault.importer import import_vault
 from safevault.object_store import iter_object_hashes, object_path
 from safevault.paths import ensure_home_layout, get_sandboxes_dir
+from safevault.protection import (
+    add_protected_root,
+    auto_detect_candidates,
+    list_protection,
+    pause_protected_root,
+    remove_protected_root,
+    resume_protected_root,
+)
 from safevault.prune import prune_unreferenced_objects
+from safevault.recent import (
+    RecentEntry,
+    SearchEntry,
+    list_recent_activity,
+    list_recent_deleted,
+    list_recent_modified,
+    search_files,
+)
 from safevault.restore import restore_file
 from safevault.retention import build_retention_plan
 from safevault.sandbox import apply_sandbox, create_sandbox, list_sandboxes
 from safevault.snapshot import create_snapshot, relative_path
+from safevault.tray import run_tray
 from safevault.verify import run_verify
 from safevault.watcher import watch_roots
 
 console = Console()
 app = typer.Typer(no_args_is_help=True, invoke_without_command=True)
+protect_app = typer.Typer(no_args_is_help=True)
+recent_app = typer.Typer(no_args_is_help=True)
+daemon_app = typer.Typer(no_args_is_help=True)
+backup_app = typer.Typer(no_args_is_help=True)
 
 SAFE_SANDBOX_CLEAN_STATUSES = {"applied"}
 LOCAL_UI_HOSTS = {"127.0.0.1", "localhost"}
+
+app.add_typer(protect_app, name="protect")
+app.add_typer(recent_app, name="recent")
+app.add_typer(daemon_app, name="daemon")
+app.add_typer(backup_app, name="backup")
 
 
 def print_json(data: object) -> None:
@@ -96,7 +135,7 @@ def main_callback(version: bool = typer.Option(False, "--version")) -> None:
 @handle_errors
 def init_command(path: Path, profile: str = typer.Option("coding", "--profile")) -> None:
     if profile not in VALID_PROFILES:
-        raise SafeVaultError("profile must be one of: coding, documents")
+        raise SafeVaultError("profile must be one of: " + ", ".join(sorted(VALID_PROFILES)))
     root = path.expanduser().resolve()
     if not root.exists():
         raise SafeVaultError(f"path does not exist: {root}")
@@ -127,32 +166,215 @@ def watch() -> None:
 @app.command()
 @handle_errors
 def deleted(since: str = typer.Option("24h", "--since")) -> None:
-    duration = parse_duration(since)
-    cutoff = (datetime.now(UTC) - duration).isoformat(timespec="microseconds")
-    conn = connect()
-    try:
-        rows = conn.execute(
-            """
-            SELECT r.path AS root_path, v.rel_path AS rel_path, v.captured_at AS detected_at
-            FROM versions v
-            JOIN files f ON f.id = v.file_id
-            JOIN roots r ON r.id = f.root_id
-            WHERE v.is_deleted_marker = 1 AND v.captured_at >= ?
-            UNION
-            SELECT r.path AS root_path, e.rel_path AS rel_path, e.detected_at AS detected_at
-            FROM events e
-            JOIN roots r ON r.id = e.root_id
-            WHERE e.event_type = 'deleted' AND e.detected_at >= ?
-            ORDER BY detected_at DESC
-            """,
-            (cutoff, cutoff),
-        ).fetchall()
-    finally:
-        conn.close()
-    table = Table("Root", "Path", "Detected")
-    for row in rows:
-        table.add_row(str(row["root_path"]), str(row["rel_path"]), str(row["detected_at"]))
+    _print_recent_table(list_recent_deleted(since=since), include_event=False)
+
+
+@recent_app.command(name="deleted")
+@handle_errors
+def recent_deleted(
+    since: str = typer.Option("24h", "--since"),
+    limit: int = typer.Option(100, "--limit", min=1),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    entries = list_recent_deleted(since=since, limit=limit)
+    if json_output:
+        print_json([_recent_to_dict(entry) for entry in entries])
+        return
+    _print_recent_table(entries, include_event=False)
+
+
+@recent_app.command(name="modified")
+@handle_errors
+def recent_modified(
+    since: str = typer.Option("24h", "--since"),
+    limit: int = typer.Option(100, "--limit", min=1),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    entries = list_recent_modified(since=since, limit=limit)
+    if json_output:
+        print_json([_recent_to_dict(entry) for entry in entries])
+        return
+    _print_recent_table(entries, include_event=True)
+
+
+@recent_app.command(name="activity")
+@handle_errors
+def recent_activity(
+    since: str = typer.Option("24h", "--since"),
+    limit: int = typer.Option(200, "--limit", min=1),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    entries = list_recent_activity(since=since, limit=limit)
+    if json_output:
+        print_json([_recent_to_dict(entry) for entry in entries])
+        return
+    _print_recent_table(entries, include_event=True)
+
+
+@app.command(name="search")
+@handle_errors
+def search_command(
+    query: str,
+    deleted_only: bool = typer.Option(False, "--deleted"),
+    root: Annotated[Path | None, typer.Option("--root")] = None,
+    limit: int = typer.Option(100, "--limit", min=1),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    entries = search_files(query, deleted=deleted_only, root=root, limit=limit)
+    if json_output:
+        print_json([_search_to_dict(entry) for entry in entries])
+        return
+    table = Table("Root", "Path", "Status", "Kind", "Size", "Last Seen")
+    for entry in entries:
+        table.add_row(
+            entry.root_path,
+            entry.rel_path,
+            entry.status,
+            entry.file_kind,
+            "" if entry.size is None else str(entry.size),
+            entry.last_seen_at,
+        )
     console.print(table)
+
+
+@daemon_app.command(name="run")
+@handle_errors
+def daemon_run(
+    test_once: Annotated[bool, typer.Option("--test-once", hidden=True)] = False,
+    poll_interval: Annotated[float, typer.Option("--poll-interval", hidden=True)] = 1.0,
+) -> None:
+    console.print("Starting SafeVault daemon")
+    run_daemon(test_once=test_once, poll_interval_seconds=poll_interval)
+    if test_once:
+        console.print("Daemon test run complete")
+
+
+@daemon_app.command(name="status")
+@handle_errors
+def daemon_status(json_output: bool = typer.Option(False, "--json")) -> None:
+    status = get_daemon_status()
+    data = {
+        "status": status.status,
+        "pid": status.pid,
+        "started_at": status.started_at,
+        "last_heartbeat_at": status.last_heartbeat_at,
+        "message": status.message,
+        "lock_exists": status.lock_exists,
+        "stop_requested": status.stop_requested,
+        "protected_roots": status.protected_roots,
+    }
+    if json_output:
+        print_json(data)
+        return
+    table = Table("Field", "Value")
+    for key, value in data.items():
+        table.add_row(key.replace("_", " "), "" if value is None else str(value))
+    console.print(table)
+
+
+@daemon_app.command(name="stop")
+@handle_errors
+def daemon_stop() -> None:
+    request_daemon_stop()
+    console.print("SafeVault daemon stop requested")
+
+
+@daemon_app.command(name="install")
+@handle_errors
+def daemon_install() -> None:
+    if os.name != "nt":
+        raise SafeVaultError("daemon install currently supports Windows Startup only")
+    startup = _windows_startup_dir()
+    startup.mkdir(parents=True, exist_ok=True)
+    script = startup / "SafeVault Daemon.cmd"
+    command = f'@echo off\r\n"{sys.executable}" -m safevault daemon run\r\n'
+    script.write_text(command, encoding="utf-8")
+    console.print(f"Installed SafeVault daemon startup item: {script}")
+
+
+@daemon_app.command(name="uninstall")
+@handle_errors
+def daemon_uninstall() -> None:
+    if os.name != "nt":
+        raise SafeVaultError("daemon uninstall currently supports Windows Startup only")
+    script = _windows_startup_dir() / "SafeVault Daemon.cmd"
+    if script.exists():
+        script.unlink()
+        console.print(f"Removed SafeVault daemon startup item: {script}")
+    else:
+        console.print("SafeVault daemon startup item was not installed")
+
+
+@backup_app.command(name="configure")
+@handle_errors
+def backup_configure(
+    target: Annotated[Path, typer.Option("--target")],
+    schedule: str = typer.Option("daily", "--schedule"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    if schedule not in {"manual", "daily", "weekly"}:
+        raise SafeVaultError("backup schedule must be one of: manual, daily, weekly")
+    config = configure_backup(target, cast(BackupSchedule, schedule))
+    data = {
+        "enabled": config.backup.enabled,
+        "target": config.backup.target,
+        "schedule": config.backup.schedule,
+    }
+    if json_output:
+        print_json(data)
+        return
+    console.print(f"Backup configured: {config.backup.target}")
+    console.print(f"Schedule: {config.backup.schedule}")
+
+
+@backup_app.command(name="status")
+@handle_errors
+def backup_status(json_output: bool = typer.Option(False, "--json")) -> None:
+    status = get_backup_status()
+    data = {
+        "enabled": status.enabled,
+        "target": status.target,
+        "schedule": status.schedule,
+        "last_success_at": status.last_success_at,
+        "last_failure_at": status.last_failure_at,
+        "last_error": status.last_error,
+        "latest_archive": status.latest_archive,
+        "latest_object_count": status.latest_object_count,
+    }
+    if json_output:
+        print_json(data)
+        return
+    table = Table("Field", "Value")
+    for key, value in data.items():
+        table.add_row(key.replace("_", " "), "" if value is None else str(value))
+    console.print(table)
+
+
+@backup_app.command(name="run")
+@handle_errors
+def backup_run(json_output: bool = typer.Option(False, "--json")) -> None:
+    result = run_backup()
+    data = {
+        "output": str(result.output),
+        "objects": result.object_count,
+        "verified": result.verified,
+    }
+    if json_output:
+        print_json(data)
+        return
+    console.print(f"Backup archive: {result.output}")
+    console.print(f"Objects exported: {result.object_count}")
+
+
+@backup_app.command(name="disable")
+@handle_errors
+def backup_disable(json_output: bool = typer.Option(False, "--json")) -> None:
+    config = disable_backup()
+    data = {"enabled": config.backup.enabled}
+    if json_output:
+        print_json(data)
+        return
+    console.print("Automatic backup disabled")
 
 
 @app.command()
@@ -506,6 +728,163 @@ def roots_command(json_output: bool = typer.Option(False, "--json")) -> None:
         )
 
 
+@protect_app.command(name="list")
+@handle_errors
+def protect_list(json_output: bool = typer.Option(False, "--json")) -> None:
+    policies = list_protection()
+    data = [
+        {
+            "root_id": policy.root_id,
+            "path": policy.root_path,
+            "enabled": policy.enabled,
+            "profile": policy.profile,
+            "auto_snapshot": policy.auto_snapshot,
+            "watch_enabled": policy.watch_enabled,
+            "hourly_snapshot": policy.hourly_snapshot,
+            "daily_snapshot": policy.daily_snapshot,
+            "paused_until": policy.paused_until,
+            "updated_at": policy.updated_at,
+            "exists": Path(policy.root_path).exists(),
+        }
+        for policy in policies
+    ]
+    if json_output:
+        print_json(data)
+        return
+    table = Table(
+        "Root ID",
+        "Path",
+        "Enabled",
+        "Profile",
+        "Watch",
+        "Auto Snapshot",
+        "Paused Until",
+        "Exists",
+    )
+    for item in data:
+        table.add_row(
+            str(item["root_id"]),
+            str(item["path"]),
+            "yes" if item["enabled"] else "no",
+            str(item["profile"]),
+            "yes" if item["watch_enabled"] else "no",
+            "yes" if item["auto_snapshot"] else "no",
+            "" if item["paused_until"] is None else str(item["paused_until"]),
+            "yes" if item["exists"] else "no",
+        )
+    console.print(table)
+
+
+@protect_app.command(name="add")
+@handle_errors
+def protect_add(
+    path: Path,
+    profile: str = typer.Option("coding", "--profile"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    root_id = add_protected_root(path, profile)
+    data = {
+        "root_id": root_id,
+        "path": str(path.expanduser().resolve(strict=False)),
+        "profile": profile,
+        "enabled": True,
+    }
+    if json_output:
+        print_json(data)
+        return
+    console.print(f"Protected root {root_id}: {data['path']}")
+
+
+@protect_app.command(name="remove")
+@handle_errors
+def protect_remove(
+    path: Path,
+    confirm: bool = typer.Option(False, "--confirm"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    if not confirm:
+        raise SafeVaultError(
+            "protect remove disables automatic protection; pass --confirm to continue"
+        )
+    policy = remove_protected_root(path)
+    data = {
+        "root_id": policy.root_id,
+        "path": policy.root_path,
+        "enabled": False,
+        "snapshots_preserved": True,
+    }
+    if json_output:
+        print_json(data)
+        return
+    console.print(f"Disabled automatic protection for root {policy.root_id}: {policy.root_path}")
+    console.print("Existing snapshots and object-store content were preserved")
+
+
+@protect_app.command(name="pause")
+@handle_errors
+def protect_pause(
+    path: Path,
+    duration: str = typer.Option("30m", "--duration"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    policy = pause_protected_root(path, duration)
+    data = {
+        "root_id": policy.root_id,
+        "path": policy.root_path,
+        "paused": True,
+        "duration": duration,
+    }
+    if json_output:
+        print_json(data)
+        return
+    console.print(f"Paused automatic protection for root {policy.root_id}: {policy.root_path}")
+
+
+@protect_app.command(name="resume")
+@handle_errors
+def protect_resume(
+    path: Path,
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    policy = resume_protected_root(path)
+    data = {
+        "root_id": policy.root_id,
+        "path": policy.root_path,
+        "paused": False,
+    }
+    if json_output:
+        print_json(data)
+        return
+    console.print(f"Resumed automatic protection for root {policy.root_id}: {policy.root_path}")
+
+
+@protect_app.command(name="auto-detect")
+@handle_errors
+def protect_auto_detect(json_output: bool = typer.Option(False, "--json")) -> None:
+    candidates = auto_detect_candidates()
+    data = [
+        {
+            "path": candidate.path,
+            "profile": candidate.profile,
+            "recommended": candidate.recommended,
+            "reason": candidate.reason,
+        }
+        for candidate in candidates
+    ]
+    if json_output:
+        print_json(data)
+        return
+    table = Table("Path", "Profile", "Recommended", "Reason")
+    for item in data:
+        table.add_row(
+            str(item["path"]),
+            str(item["profile"]),
+            "yes" if item["recommended"] else "no",
+            str(item["reason"]),
+        )
+    console.print(table)
+
+
 @app.command()
 @handle_errors
 def unprotect(
@@ -657,6 +1036,17 @@ def import_command(
         console.print(f"Objects imported: {result.object_count}")
 
 
+@app.command(name="tray")
+@handle_errors
+def tray_command(
+    open_ui: bool = typer.Option(False, "--open-ui"),
+    check: Annotated[bool, typer.Option("--check", hidden=True)] = False,
+) -> None:
+    run_tray(open_ui=open_ui, check=check)
+    if check:
+        console.print("SafeVault tray dependencies available")
+
+
 @app.command(name="ui")
 @handle_errors
 def ui_command(
@@ -706,6 +1096,65 @@ def retention_plan(
     if verbose:
         for item in result.candidate_versions:
             console.print(f"- version {item.version_id}: {item.rel_path}")
+
+
+def _recent_to_dict(entry: RecentEntry) -> dict[str, object]:
+    return {
+        "root_path": entry.root_path,
+        "rel_path": entry.rel_path,
+        "absolute_path": str(Path(entry.root_path) / entry.rel_path),
+        "detected_at": entry.detected_at,
+        "event_type": entry.event_type,
+        "size": entry.size,
+        "file_kind": entry.file_kind,
+    }
+
+
+def _search_to_dict(entry: SearchEntry) -> dict[str, object]:
+    return {
+        "root_path": entry.root_path,
+        "rel_path": entry.rel_path,
+        "absolute_path": str(Path(entry.root_path) / entry.rel_path),
+        "status": entry.status,
+        "file_kind": entry.file_kind,
+        "size": entry.size,
+        "last_seen_at": entry.last_seen_at,
+    }
+
+
+def _print_recent_table(entries: list[RecentEntry], *, include_event: bool) -> None:
+    columns = ["Root", "Path"]
+    if include_event:
+        columns.append("Event")
+    columns.extend(["Detected", "Size", "Kind"])
+    table = Table(*columns)
+    for entry in entries:
+        values = [entry.root_path, entry.rel_path]
+        if include_event:
+            values.append(entry.event_type)
+        values.extend(
+            [
+                entry.detected_at,
+                "" if entry.size is None else str(entry.size),
+                "" if entry.file_kind is None else entry.file_kind,
+            ]
+        )
+        table.add_row(*values)
+    console.print(table)
+
+
+def _windows_startup_dir() -> Path:
+    appdata = os.environ.get("APPDATA")
+    if not appdata:
+        raise SafeVaultError("APPDATA is not set; cannot locate Windows Startup folder")
+    return (
+        Path(appdata)
+        / "Microsoft"
+        / "Windows"
+        / "Start Menu"
+        / "Programs"
+        / "Startup"
+    )
 
 
 def _object_store_size() -> int:
@@ -766,6 +1215,8 @@ def _plan_unprotect(conn, root_id: int, root_path: str) -> UnprotectPlan:
 
 def _execute_unprotect(conn, root_id: int) -> None:
     with conn:
+        conn.execute("DELETE FROM change_batches WHERE root_id = ?", (root_id,))
+        conn.execute("DELETE FROM protection_policies WHERE root_id = ?", (root_id,))
         conn.execute("DELETE FROM events WHERE root_id = ?", (root_id,))
         conn.execute(
             """

@@ -20,9 +20,9 @@ backups.
 
 ## Release Status
 
-SafeVault `v0.1.0rc1` is a release candidate, not a stable/final release. The
-corresponding Git tag may be named `v0.1.0-rc1`, while Python package metadata
-uses the PEP 440 version `0.1.0rc1`.
+SafeVault `v0.2.0rc1` is a release candidate, not a stable/final release. The
+corresponding Git tag may be named `v0.2.0-rc1`, while Python package metadata
+uses the PEP 440 version `0.2.0rc1`.
 
 SafeVault is suitable for cautious personal/project use after you have verified:
 
@@ -84,10 +84,11 @@ The UI binds to `127.0.0.1` by default and uses a random token printed at
 startup. It is a local convenience UI, not a remote admin console. Do not expose
 it to public networks.
 
-High-risk GUI actions require typed confirmation words: `RESTORE`,
-`ALLOW DELETE`, `PRUNE`, `CLEAN SANDBOXES`, `OVERWRITE EXPORT`,
-`SKIP VERIFY`, `IMPORT`, and `OVERWRITE`. The GUI calls the same backend safety
-logic as the CLI.
+High-risk GUI actions require typed confirmation words: `ALLOW DELETE`,
+`PRUNE`, `CLEAN SANDBOXES`, `OVERWRITE EXPORT`, `SKIP VERIFY`, `IMPORT`, and
+`OVERWRITE`. Normal restore uses a local confirmation action instead of making
+non-advanced users type `RESTORE`; advanced restore flows still accept
+`RESTORE`. The GUI calls the same backend safety logic as the CLI.
 
 The release check includes a real local HTTP smoke test:
 
@@ -97,8 +98,96 @@ bash scripts/gui_smoke.sh
 
 GUI import is dry-run by default. To perform a real import in the browser,
 uncheck dry-run and type `IMPORT`; importing over a non-empty target additionally
-requires `OVERWRITE`. The project remains `0.1.0rc1`, a release candidate, not a
+requires `OVERWRITE`. The project remains `0.2.0rc1`, a release candidate, not a
 stable/final release.
+
+## Automatic Protection Mode
+
+SafeVault 0.2.0rc1 introduces automatic protection mode. The goal is that a
+user configures SafeVault once, then lets the background daemon record changes,
+surface recent deletions, and run scheduled export backups.
+
+```bash
+safevault protect auto-detect
+safevault protect add ~/Documents --profile documents
+safevault daemon run
+safevault recent deleted --since 24h
+safevault search report --deleted
+```
+
+`protect add` refuses unsafe roots: filesystem roots, `SAFEVAULT_HOME`, a
+directory containing `SAFEVAULT_HOME`, duplicate roots, and the configured
+backup target. `protect remove --confirm` disables automatic protection for a
+root but preserves existing snapshots and object-store content. Use `unprotect`
+only when you intentionally want to remove SafeVault metadata for a root.
+
+## Daemon And Tray
+
+```bash
+safevault daemon run
+safevault daemon status
+safevault daemon stop
+safevault daemon install
+safevault daemon uninstall
+safevault tray
+safevault tray --open-ui
+```
+
+The daemon is single-instance and writes heartbeat state to the vault database.
+On startup it scans enabled roots, then watches file changes. Created and
+modified files are debounced into snapshots. Deleted tracked files receive an
+immediate deleted marker so the Recovery Home can show them without waiting for
+a later manual snapshot. Bulk delete activity creates a warning notification.
+
+The tray is optional and requires `pip install -e '.[tray]'`. It can open the
+local GUI, run snapshots, verify, trigger backup, pause protection for 30
+minutes, resume protection, and quit. It does not bypass CLI safety behavior.
+
+## Recovery Home
+
+The GUI home page is now a recovery-first page. After onboarding, it shows:
+
+- protected root count, daemon status, last snapshot, last backup, and health;
+- recent deleted files with one-click restore;
+- recent modified files;
+- file search, including deleted-only search;
+- quick actions for adding folders, verify, backup, and export/import.
+
+## Onboarding
+
+On first local GUI open, SafeVault shows an onboarding flow. It suggests common
+folders such as Desktop, Documents, and project directories when they exist,
+then creates selected roots and initial snapshots. Backup configuration is
+optional during onboarding; if skipped, the GUI keeps warning that local
+SafeVault data can be lost with the machine.
+
+## Automatic Backup
+
+```bash
+safevault backup configure --target /external/SafeVaultBackups --schedule daily
+safevault backup status
+safevault backup run
+safevault backup disable
+```
+
+Automatic backup uses the existing verified export path. Backups are named
+`safevault-backup-YYYYMMDD-HHMMSS.tar.gz`; `safevault-latest.tar.gz` is updated
+atomically when latest overwrite is enabled. Backup targets are rejected inside
+`SAFEVAULT_HOME` and inside protected roots.
+
+## What SafeVault Protects Automatically
+
+SafeVault protects files under roots that were added by `safevault protect add`,
+GUI onboarding, `safevault init`, or snapshots. The daemon watches enabled,
+unpaused policies. It does not follow external symlinks, does not read special
+files, and does not delete user files automatically.
+
+## What It Still Cannot Protect
+
+SafeVault still cannot recover files that were never captured, cannot recover
+raw disk blocks after SSD TRIM, cannot bypass OS permissions, cannot provide
+malware isolation, and does not provide cloud sync. Export backups should be
+stored off-machine.
 
 ## Quickstart
 
@@ -109,6 +198,8 @@ safevault versions ~/Projects/myapp/file.py
 safevault restore ~/Projects/myapp/file.py --latest
 safevault status ~/Projects/myapp
 safevault verify --deep
+safevault daemon status
+safevault backup status
 ```
 
 By default SafeVault stores data in `~/.safevault`. Set `SAFEVAULT_HOME` to use
@@ -295,12 +386,12 @@ python -m build
 python -m twine check dist/*
 ```
 
-Release checklist for `v0.1.0-rc1`:
+Release checklist for `v0.2.0-rc1`:
 
 - Linux CI, macOS symlink CI, and Windows core CI are green.
 - README release status says release candidate, not stable/final.
 - `CHANGELOG.md`, `pyproject.toml`, and `safevault.__version__` agree on
-  `0.1.0rc1`.
+  `0.2.0rc1`.
 - Export/import round-trip works in a clean environment.
 - Export archives are stored off-machine.
 
@@ -309,7 +400,7 @@ Release checklist for `v0.1.0-rc1`:
 - No raw disk recovery.
 - Recovery is limited to previously captured snapshots.
 - `safevault run` is not a hardened malicious-code sandbox.
-- No continuous sync or built-in off-machine backup.
+- No cloud sync; automatic backup writes local/export archives only.
 - Import archives must be trusted.
 - The watcher is best-effort and snapshots remain the source of recovery.
 - Retention is planning-only in this release candidate.

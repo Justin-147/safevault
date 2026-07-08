@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.2.0rc1
+
+SafeVault 0.2.0rc1 introduces automatic protection mode while remaining a
+release candidate.
+
+Added:
+- `safevault protect` commands for add/list/remove/auto-detect/pause/resume.
+- Config file support at `SAFEVAULT_HOME/config.toml` with atomic writes.
+- SQLite migrations for protection policies, daemon state, change batches,
+  backup jobs, and notifications.
+- `safevault recent` and `safevault search`.
+- `safevault daemon` with single-instance lock, heartbeat, startup scan,
+  debounced watcher snapshots, immediate deleted markers, scheduled snapshots,
+  idle verify, and bulk-delete notifications.
+- `safevault backup` with configure/status/run/disable and scheduled export.
+- Recovery Home, onboarding, one-click normal restore, and backup status in the
+  local GUI.
+- Optional `safevault tray` command through the `[tray]` extra.
+- Chinese documentation for automatic protection, daemon/tray, one-click
+  restore, automatic backup, and onboarding.
+
+Safety notes:
+- Automatic protection does not delete user files.
+- Backup targets are rejected inside `SAFEVAULT_HOME` and protected roots.
+- GUI restore no longer requires `RESTORE` in normal mode, but still requires a
+  local confirmation action; advanced and legacy flows still accept `RESTORE`.
+- Import/apply/export/prune destructive protections remain unchanged.
+
 ## 0.1.0rc1
 
 SafeVault is a local project protection and recovery tool built around

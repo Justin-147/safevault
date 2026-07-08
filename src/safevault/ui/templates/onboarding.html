@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>首次启动向导</h1>
+<form method="post" action="/onboarding" class="panel">
+  <h2>选择保护目录</h2>
+  <table>
+    <tr><th>Use</th><th>Path</th><th>Profile</th><th>Reason</th></tr>
+    {% for candidate in candidates %}
+    <tr>
+      <td><input type="checkbox" name="roots" value="{{ candidate.path }}" {% if candidate.recommended %}checked{% endif %}></td>
+      <td>{{ candidate.path }}</td>
+      <td>{{ candidate.profile }}</td>
+      <td>{{ candidate.reason }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4">No common folders detected. You can add folders after setup.</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>自动备份</h2>
+  <label>Backup target <input name="backup_target" placeholder="D:\SafeVaultBackups"></label>
+  <select name="backup_schedule">
+    <option value="daily" selected>daily</option>
+    <option value="weekly">weekly</option>
+    <option value="manual">manual</option>
+  </select>
+
+  <h2>安全说明</h2>
+  <p class="warning">SafeVault 不做裸盘恢复，不绕过权限，不自动删除用户文件。恢复和导入覆盖仍会走显式确认。</p>
+  <button type="submit">Complete setup</button>
+</form>
+{% endblock %}

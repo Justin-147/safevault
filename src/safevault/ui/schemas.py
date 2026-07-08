@@ -15,6 +15,10 @@ class DashboardStatus:
     deleted_files_count: int
     object_store_size: int
     latest_sandbox: dict[str, str] | None
+    daemon_status: str
+    last_snapshot: str | None
+    last_backup: str | None
+    health_summary: str
 
 
 @dataclass(frozen=True)
@@ -61,4 +65,3 @@ class SandboxSummary:
     created_at: str
     status: str
     counts: dict[str, int]
-

@@ -22,11 +22,17 @@ class SafeVaultEventHandler(FileSystemEventHandler):
         snapshot_func: SnapshotFunc | None = None,
         debounce_seconds: float = 1.0,
         warn_func: Callable[[str], None] | None = None,
+        deleted_func: Callable[[Path, Path], None] | None = None,
+        bulk_delete_threshold: int = 20,
+        bulk_delete_window_seconds: float = 30,
     ) -> None:
         self.root = root
         self.snapshot_func = snapshot_func or (lambda path, reason: create_snapshot(path, reason))
         self.debounce_seconds = debounce_seconds
         self.warn_func = warn_func or print
+        self.deleted_func = deleted_func
+        self.bulk_delete_threshold = bulk_delete_threshold
+        self.bulk_delete_window_seconds = bulk_delete_window_seconds
         self.pending = False
         self.last_event_at = 0.0
         self.delete_times: list[float] = []
@@ -45,13 +51,19 @@ class SafeVaultEventHandler(FileSystemEventHandler):
             self.pending = True
             self.last_event_at = current_time
             if event_type == "deleted":
+                if self.deleted_func is not None:
+                    self.deleted_func(self.root, path_obj)
                 self.delete_times.append(current_time)
                 self.delete_times = [
-                    value for value in self.delete_times if current_time - value <= 30
+                    value
+                    for value in self.delete_times
+                    if current_time - value <= self.bulk_delete_window_seconds
                 ]
-                if len(self.delete_times) > 20:
+                if len(self.delete_times) > self.bulk_delete_threshold:
                     self.warn_func(
-                        "High-risk warning: more than 20 delete events in 30 seconds"
+                        "High-risk warning: more than "
+                        f"{self.bulk_delete_threshold} delete events in "
+                        f"{int(self.bulk_delete_window_seconds)} seconds"
                     )
             if now is None:
                 self._schedule_timer()
