@@ -4,9 +4,13 @@
 {% if status %}
 <section class="status-strip">
   <div><strong>Protected roots</strong><span>{{ status.roots_count }}</span></div>
+  <div><strong>Watched roots</strong><span>{{ status.watched_roots }}</span></div>
+  <div><strong>Paused roots</strong><span>{{ status.paused_roots }}</span></div>
+  <div><strong>Missing roots</strong><span>{{ status.missing_roots }}</span></div>
   <div><strong>Daemon</strong><span>{{ status.daemon_status }}</span></div>
   <div><strong>Last snapshot</strong><span>{{ status.last_snapshot or "none" }}</span></div>
   <div><strong>Last backup</strong><span>{{ status.last_backup or "not configured" }}</span></div>
+  <div><strong>Next backup due</strong><span>{{ status.next_backup_due or "not scheduled" }}</span></div>
   <div><strong>Health</strong><span>{{ status.health_summary }}</span></div>
 </section>
 {% endif %}
@@ -89,6 +93,9 @@
     {% endif %}
     {% if status and status.daemon_status != "running" %}
     <p class="warning">后台保护未运行。文件变化不会被自动快照。</p>
+    {% endif %}
+    {% if status and status.last_daemon_message %}
+    <p><strong>Daemon message</strong><br>{{ status.last_daemon_message }}</p>
     {% endif %}
   </aside>
 </section>

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import time
 import webbrowser
 from importlib import import_module
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -12,21 +14,23 @@ from safevault.daemon import get_daemon_status
 from safevault.errors import SafeVaultError
 from safevault.protection import list_protection, pause_protected_root, resume_protected_root
 from safevault.snapshot import create_snapshot
+from safevault.ui.session import read_ui_session, ui_session_reachable, ui_url
 from safevault.verify import run_verify
 
 
 def tray_available() -> bool:
     try:
-        _load_tray_dependencies()
+        _check_tray_dependencies()
     except SafeVaultError:
         return False
     return True
 
 
 def run_tray(*, open_ui: bool = False, check: bool = False) -> None:
-    pystray, image_mod, draw_mod = _load_tray_dependencies()
     if check:
+        _check_tray_dependencies()
         return
+    pystray, image_mod, draw_mod = _load_tray_dependencies()
     if open_ui:
         open_safevault_ui()
     status = get_daemon_status()
@@ -54,8 +58,21 @@ def run_tray(*, open_ui: bool = False, check: bool = False) -> None:
 
 
 def open_safevault_ui() -> None:
-    _spawn_safevault(["ui", "--open"])
-    webbrowser.open("http://127.0.0.1:8765")
+    session = read_ui_session()
+    if session is not None and ui_session_reachable(session):
+        webbrowser.open(ui_url(session))
+        return
+    _spawn_safevault(["ui"])
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        session = read_ui_session()
+        if session is not None:
+            url = ui_url(session)
+            if ui_session_reachable(session, timeout=0.5):
+                webbrowser.open(url)
+                return
+        time.sleep(0.2)
+    raise SafeVaultError("SafeVault UI session did not become available")
 
 
 def snapshot_all_roots() -> None:
@@ -91,6 +108,26 @@ def _load_tray_dependencies():
     except ModuleNotFoundError as exc:
         raise SafeVaultError("Install tray dependencies with: pip install -e '.[tray]'") from exc
     return pystray, image_mod, draw_mod
+
+
+def _check_tray_dependencies() -> None:
+    missing = [
+        module
+        for module in ("pystray", "PIL.Image", "PIL.ImageDraw")
+        if _module_missing(module)
+    ]
+    if missing:
+        raise SafeVaultError(
+            "Install tray dependencies with: pip install -e '.[tray]' "
+            f"(missing: {', '.join(missing)})"
+        )
+
+
+def _module_missing(module: str) -> bool:
+    try:
+        return find_spec(module) is None
+    except ModuleNotFoundError:
+        return True
 
 
 def _build_icon(image_mod, draw_mod):

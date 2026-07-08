@@ -8,7 +8,7 @@ from safevault.errors import SafeVaultError
 from safevault.models import ProtectionPolicy, Root
 from safevault.paths import ensure_home_layout, get_db_path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def utc_now_iso() -> str:
@@ -154,6 +154,10 @@ def migrate(conn: sqlite3.Connection) -> None:
     if version < 2:
         migrate_to_v2(conn)
         set_user_version(conn, 2)
+        version = 2
+    if version < 3:
+        migrate_to_v3(conn)
+        set_user_version(conn, 3)
 
 
 def ensure_migrations_table(conn: sqlite3.Connection) -> None:
@@ -263,6 +267,16 @@ def migrate_to_v2(conn: sqlite3.Connection) -> None:
         (now, now),
     )
     record_migration(conn, 2)
+
+
+def migrate_to_v3(conn: sqlite3.Connection) -> None:
+    columns = {
+        str(row["name"])
+        for row in conn.execute("PRAGMA table_info(daemon_state)").fetchall()
+    }
+    if "stopped_at" not in columns:
+        conn.execute("ALTER TABLE daemon_state ADD COLUMN stopped_at TEXT")
+    record_migration(conn, 3)
 
 
 def _root_from_row(row: sqlite3.Row | None) -> Root | None:

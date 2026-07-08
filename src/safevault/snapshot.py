@@ -7,10 +7,11 @@ from pathlib import Path
 from typing import Literal
 
 from safevault import object_store
-from safevault.db import connect, get_or_create_root, utc_now_iso
+from safevault.db import connect, utc_now_iso
 from safevault.errors import SafeVaultError
 from safevault.ignore import build_pathspec, is_ignored
 from safevault.paths import ensure_home_layout
+from safevault.protection import register_protected_root
 from safevault.symlinks import symlink_payload
 
 
@@ -237,10 +238,16 @@ def create_snapshot(path: Path, reason: str = "manual", profile: str = "coding")
     if not root_path.is_dir():
         raise SafeVaultError(f"path is not a directory: {root_path}")
 
+    root_id = register_protected_root(
+        root_path,
+        profile,
+        source="snapshot",
+        fail_if_exists=False,
+    )
+
     snapshot_id: int | None = None
     conn = connect()
     try:
-        root_id = get_or_create_root(conn, root_path, profile)
         started_at = utc_now_iso()
         cur = conn.execute(
             """

@@ -28,7 +28,13 @@ class AutoProtectCandidate:
     reason: str
 
 
-def add_protected_root(path: Path, profile: str) -> int:
+def register_protected_root(
+    path: Path,
+    profile: str,
+    *,
+    source: str,
+    fail_if_exists: bool = False,
+) -> int:
     root_path = validate_protection_path(path)
     if profile not in VALID_PROFILES:
         raise SafeVaultError(
@@ -36,13 +42,23 @@ def add_protected_root(path: Path, profile: str) -> int:
         )
     conn = connect()
     try:
-        if get_root_by_path(conn, root_path) is not None:
+        existing = get_root_by_path(conn, root_path)
+        if existing is not None and fail_if_exists:
             raise SafeVaultError(f"root is already protected: {root_path}")
         root_id = get_or_create_root(conn, root_path, profile)
         conn.commit()
         return root_id
     finally:
         conn.close()
+
+
+def add_protected_root(path: Path, profile: str) -> int:
+    return register_protected_root(
+        path,
+        profile,
+        source="protect-add",
+        fail_if_exists=True,
+    )
 
 
 def remove_protected_root(path: Path) -> ProtectionPolicy:
@@ -72,14 +88,22 @@ def list_protection() -> list[ProtectionPolicy]:
 
 
 def list_enabled_policies() -> list[ProtectionPolicy]:
-    now = datetime.now(UTC)
-    return [
-        policy
-        for policy in list_protection()
-        if policy.enabled
+    return list_watchable_policies()
+
+
+def list_watchable_policies(now: datetime | None = None) -> list[ProtectionPolicy]:
+    current = datetime.now(UTC) if now is None else now
+    return [policy for policy in list_protection() if policy_is_watchable(policy, current)]
+
+
+def policy_is_watchable(policy: ProtectionPolicy, now: datetime | None = None) -> bool:
+    current = datetime.now(UTC) if now is None else now
+    return (
+        policy.enabled
         and policy.watch_enabled
-        and (policy.paused_until is None or _parse_iso(policy.paused_until) <= now)
-    ]
+        and (policy.paused_until is None or _parse_iso(policy.paused_until) <= current)
+        and root_safety_issue(Path(policy.root_path)) is None
+    )
 
 
 def pause_protected_root(path: Path, duration: str) -> ProtectionPolicy:
@@ -96,7 +120,7 @@ def pause_protected_root(path: Path, duration: str) -> ProtectionPolicy:
         conn.execute(
             """
             UPDATE protection_policies
-            SET watch_enabled = 0, paused_until = ?, updated_at = ?
+            SET paused_until = ?, updated_at = ?
             WHERE root_id = ?
             """,
             (paused_until, utc_now_iso(), root.id),
@@ -131,15 +155,25 @@ def resume_protected_root(path: Path) -> ProtectionPolicy:
 
 def validate_protection_path(path: Path) -> Path:
     root_path = path.expanduser().resolve(strict=False)
-    if not root_path.exists():
-        raise SafeVaultError(f"path does not exist: {root_path}")
-    if not root_path.is_dir():
-        raise SafeVaultError(f"path is not a directory: {root_path}")
-    if _is_filesystem_root(root_path):
-        raise SafeVaultError("cannot protect a filesystem root")
-    _reject_safevault_home(root_path)
-    _reject_backup_target(root_path)
+    issue = root_safety_issue(root_path)
+    if issue is not None:
+        raise SafeVaultError(issue)
     return root_path
+
+
+def root_safety_issue(path: Path) -> str | None:
+    root_path = path.expanduser().resolve(strict=False)
+    if not root_path.exists():
+        return f"path does not exist: {root_path}"
+    if not root_path.is_dir():
+        return f"path is not a directory: {root_path}"
+    if _is_filesystem_root(root_path):
+        return "cannot protect a filesystem root"
+    if issue := _safevault_home_issue(root_path):
+        return issue
+    if issue := _backup_target_issue(root_path):
+        return issue
+    return None
 
 
 def auto_detect_candidates() -> list[AutoProtectCandidate]:
@@ -183,22 +217,36 @@ def auto_detect_candidates() -> list[AutoProtectCandidate]:
 
 
 def _reject_safevault_home(root_path: Path) -> None:
-    home = get_safevault_home().resolve(strict=False)
-    if root_path == home or root_path.is_relative_to(home) or home.is_relative_to(root_path):
-        raise SafeVaultError("cannot protect SAFEVAULT_HOME or a directory containing it")
+    issue = _safevault_home_issue(root_path)
+    if issue is not None:
+        raise SafeVaultError(issue)
 
 
 def _reject_backup_target(root_path: Path) -> None:
+    issue = _backup_target_issue(root_path)
+    if issue is not None:
+        raise SafeVaultError(issue)
+
+
+def _safevault_home_issue(root_path: Path) -> str | None:
+    home = get_safevault_home().resolve(strict=False)
+    if root_path == home or root_path.is_relative_to(home) or home.is_relative_to(root_path):
+        return "cannot protect SAFEVAULT_HOME or a directory containing it"
+    return None
+
+
+def _backup_target_issue(root_path: Path) -> str | None:
     target = load_config().backup.target
     if not target:
-        return
+        return None
     backup_path = Path(target).expanduser().resolve(strict=False)
     if (
         root_path == backup_path
         or root_path.is_relative_to(backup_path)
         or backup_path.is_relative_to(root_path)
     ):
-        raise SafeVaultError("cannot protect the configured backup target")
+        return "cannot protect the configured backup target"
+    return None
 
 
 def _is_filesystem_root(path: Path) -> bool:

@@ -38,6 +38,7 @@ class AppConfig:
 class DaemonConfig:
     enabled: bool = True
     heartbeat_interval_seconds: int = 30
+    policy_refresh_seconds: int = 10
     watch_debounce_seconds: int = 3
     batch_window_seconds: int = 20
     bulk_delete_threshold: int = 20
@@ -111,6 +112,10 @@ class SafeVaultConfig:
                     daemon.get("heartbeat_interval_seconds", 30),
                     "daemon.heartbeat_interval_seconds",
                 ),
+                policy_refresh_seconds=_positive_int(
+                    daemon.get("policy_refresh_seconds", 10),
+                    "daemon.policy_refresh_seconds",
+                ),
                 watch_debounce_seconds=_positive_int(
                     daemon.get("watch_debounce_seconds", 3),
                     "daemon.watch_debounce_seconds",
@@ -147,7 +152,7 @@ class SafeVaultConfig:
                 enabled=bool(backup.get("enabled", False)),
                 target=_normalize_optional_path(backup.get("target")),
                 schedule=_backup_schedule(backup.get("schedule", "manual")),
-                time=str(backup.get("time", "21:00")),
+                time=_backup_time(backup.get("time", "21:00")),
                 gzip=bool(backup.get("gzip", True)),
                 overwrite_latest=bool(backup.get("overwrite_latest", True)),
                 keep_last=_positive_int(backup.get("keep_last", 7), "backup.keep_last"),
@@ -180,6 +185,7 @@ class SafeVaultConfig:
             "daemon": {
                 "enabled": self.daemon.enabled,
                 "heartbeat_interval_seconds": self.daemon.heartbeat_interval_seconds,
+                "policy_refresh_seconds": self.daemon.policy_refresh_seconds,
                 "watch_debounce_seconds": self.daemon.watch_debounce_seconds,
                 "batch_window_seconds": self.daemon.batch_window_seconds,
                 "bulk_delete_threshold": self.daemon.bulk_delete_threshold,
@@ -274,6 +280,7 @@ def with_backup(
     *,
     target: Path | None = None,
     schedule: BackupSchedule | None = None,
+    time: str | None = None,
     enabled: bool | None = None,
 ) -> SafeVaultConfig:
     backup = config.backup
@@ -281,6 +288,8 @@ def with_backup(
         backup = replace(backup, target=_normalize_optional_path(str(target)))
     if schedule is not None:
         backup = replace(backup, schedule=_backup_schedule(schedule))
+    if time is not None:
+        backup = replace(backup, time=_backup_time(time))
     if enabled is not None:
         backup = replace(backup, enabled=enabled)
     return replace(config, backup=backup)
@@ -300,6 +309,18 @@ def _backup_schedule(value: object) -> BackupSchedule:
     if schedule not in {"manual", "daily", "weekly"}:
         raise SafeVaultError("backup.schedule must be one of: manual, daily, weekly")
     return cast(BackupSchedule, schedule)
+
+
+def _backup_time(value: object) -> str:
+    text = str(value)
+    parts = text.split(":")
+    if len(parts) != 2 or not all(part.isdigit() for part in parts):
+        raise SafeVaultError("backup.time must use HH:MM")
+    hour = int(parts[0])
+    minute = int(parts[1])
+    if hour > 23 or minute > 59:
+        raise SafeVaultError("backup.time must use HH:MM")
+    return f"{hour:02d}:{minute:02d}"
 
 
 def _positive_int(value: object, name: str) -> int:

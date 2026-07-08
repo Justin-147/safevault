@@ -18,6 +18,7 @@ from safevault.paths import (
     get_sandboxes_dir,
     get_tmp_dir,
 )
+from safevault.protection import root_safety_issue
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,7 @@ class DoctorResult:
     orphan_objects: list[str]
     temp_files: list[str]
     missing_roots: list[str]
+    unsafe_roots: list[str]
     missing_tables: list[str]
     sandbox_warnings: list[str]
 
@@ -47,6 +49,7 @@ class DoctorResult:
         return [
             *(f"orphan object: {item}" for item in self.orphan_objects),
             *(f"temp or partial file: {item}" for item in self.temp_files),
+            *(f"unsafe protected root: {item}" for item in self.unsafe_roots),
             *self.sandbox_warnings,
         ]
 
@@ -61,6 +64,7 @@ class DoctorResult:
             "orphan_objects": self.orphan_objects,
             "temp_files": self.temp_files,
             "missing_roots": self.missing_roots,
+            "unsafe_roots": self.unsafe_roots,
             "missing_tables": self.missing_tables,
             "sandbox_warnings": self.sandbox_warnings,
         }
@@ -109,6 +113,12 @@ def run_doctor(*, deep: bool = False) -> DoctorResult:
             for row in conn.execute("SELECT path FROM roots ORDER BY path").fetchall()
             if not Path(row["path"]).exists()
         ]
+        unsafe_roots = []
+        for row in conn.execute("SELECT path FROM roots ORDER BY path").fetchall():
+            path = Path(str(row["path"]))
+            issue = root_safety_issue(path)
+            if issue is not None:
+                unsafe_roots.append(f"{path}: {issue}")
     finally:
         conn.close()
 
@@ -149,6 +159,7 @@ def run_doctor(*, deep: bool = False) -> DoctorResult:
         orphan_objects=orphan_objects,
         temp_files=temp_files,
         missing_roots=missing_roots,
+        unsafe_roots=unsafe_roots,
         missing_tables=missing_tables,
         sandbox_warnings=sandbox_warnings,
     )

@@ -5,7 +5,10 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from safevault.backup import configure_backup
 from safevault.config import load_config, save_config
+from safevault.daemon import run_daemon
+from safevault.protection import add_protected_root
 from safevault.snapshot import create_snapshot
 from safevault.ui.app import create_app
 
@@ -49,6 +52,25 @@ def test_recovery_home_searches_files(sv_home: Path, project: Path) -> None:
     assert response.status_code == 200
     assert "search-home.txt" in response.text
     assert "Versions" in response.text
+
+
+def test_dashboard_displays_daemon_and_backup_details(
+    sv_home: Path, project: Path, tmp_path: Path
+) -> None:
+    _complete_onboarding_config()
+    add_protected_root(project, "coding")
+    configure_backup(tmp_path / "dashboard-backups", "daily", time="00:00")
+    run_daemon(test_once=True)
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        response = client.get("/", params={"token": TOKEN})
+
+    assert response.status_code == 200
+    assert "Watched roots" in response.text
+    assert "Paused roots" in response.text
+    assert "Missing roots" in response.text
+    assert "Next backup due" in response.text
+    assert "Daemon message" in response.text
 
 
 def test_one_click_restore_uses_normal_confirmation(sv_home: Path, project: Path) -> None:

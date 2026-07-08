@@ -16,8 +16,13 @@ class DashboardStatus:
     object_store_size: int
     latest_sandbox: dict[str, str] | None
     daemon_status: str
+    watched_roots: int
+    paused_roots: int
+    missing_roots: int
+    last_daemon_message: str | None
     last_snapshot: str | None
     last_backup: str | None
+    next_backup_due: str | None
     health_summary: str
 
 

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from safevault.config import BackupConfig, SafeVaultConfig, load_config, save_config
 from safevault.db import connect
 from safevault.sandbox import create_sandbox
 from safevault.snapshot import create_snapshot
@@ -40,6 +41,14 @@ def _version_count() -> int:
     conn = connect()
     try:
         return int(conn.execute("SELECT COUNT(*) FROM versions").fetchone()[0])
+    finally:
+        conn.close()
+
+
+def _root_count() -> int:
+    conn = connect()
+    try:
+        return int(conn.execute("SELECT COUNT(*) FROM roots").fetchone()[0])
     finally:
         conn.close()
 
@@ -100,6 +109,106 @@ def test_ui_can_add_root_and_run_snapshot(sv_home: Path, project: Path) -> None:
         assert response.status_code == 200
         assert "Snapshot" in response.text
         assert _version_count() == 1
+
+
+def test_ui_add_root_rejects_safevault_home(sv_home: Path) -> None:
+    sv_home.mkdir(parents=True)
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        response = client.post(
+            "/roots/add",
+            data={"path": str(sv_home), "profile": "coding"},
+        )
+
+    assert response.status_code == 200
+    assert "SAFEVAULT_HOME" in response.text
+
+
+def test_ui_add_root_rejects_backup_target(
+    sv_home: Path, project: Path, tmp_path: Path
+) -> None:
+    backup_target = tmp_path / "backup-target"
+    backup_target.mkdir()
+    save_config(
+        SafeVaultConfig(
+            backup=BackupConfig(enabled=True, target=str(backup_target))
+        )
+    )
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        response = client.post(
+            "/roots/add",
+            data={"path": str(backup_target), "profile": "coding"},
+        )
+
+    assert response.status_code == 200
+    assert "backup target" in response.text
+
+
+def test_ui_add_root_rejects_duplicate_with_clear_message(
+    sv_home: Path, project: Path
+) -> None:
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        first = client.post(
+            "/roots/add",
+            data={"path": str(project), "profile": "coding"},
+        )
+        second = client.post(
+            "/roots/add",
+            data={"path": str(project), "profile": "coding"},
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert "already protected" in second.text
+
+
+def test_onboarding_backup_target_inside_selected_root_is_rejected(
+    sv_home: Path, project: Path
+) -> None:
+    backup_target = project / "backups"
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        response = client.post(
+            "/onboarding",
+            data={
+                "roots": str(project),
+                "backup_target": str(backup_target),
+                "backup_schedule": "daily",
+            },
+        )
+
+    assert response.status_code == 200
+    assert "backup target must not be inside a protected root" in response.text
+    assert not backup_target.exists()
+    assert _root_count() == 0
+    assert not load_config().app.onboarding_completed
+
+
+def test_onboarding_selected_root_inside_safevault_home_is_rejected(
+    sv_home: Path,
+) -> None:
+    sv_home.mkdir(parents=True, exist_ok=True)
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        response = client.post(
+            "/onboarding",
+            data={
+                "roots": str(sv_home),
+                "backup_target": "",
+                "backup_schedule": "daily",
+            },
+        )
+
+    assert response.status_code == 200
+    assert "SAFEVAULT_HOME" in response.text
+    assert _root_count() == 0
+    assert not load_config().app.onboarding_completed
 
 
 def test_ui_versions_restore_and_deleted_page(sv_home: Path, project: Path) -> None:

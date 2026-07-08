@@ -9,9 +9,14 @@ from typing import cast
 
 from safevault import __version__
 from safevault.backup import configure_backup, get_backup_status, run_backup
-from safevault.config import VALID_PROFILES, BackupSchedule, load_config, save_config
+from safevault.config import (
+    BackupSchedule,
+    load_config,
+    save_config,
+    validate_backup_target,
+)
 from safevault.daemon import get_daemon_status
-from safevault.db import connect, get_or_create_root, list_roots
+from safevault.db import connect, list_roots
 from safevault.doctor import DoctorResult, run_doctor
 from safevault.durations import parse_duration
 from safevault.errors import RootNotFoundError, SafeVaultError
@@ -20,7 +25,7 @@ from safevault.importer import ImportResult, import_vault
 from safevault.models import ApplyResult, DiffResult
 from safevault.object_store import iter_object_hashes, object_path
 from safevault.paths import get_safevault_home, get_sandboxes_dir
-from safevault.protection import auto_detect_candidates
+from safevault.protection import auto_detect_candidates, register_protected_root
 from safevault.prune import prune_unreferenced_objects
 from safevault.recent import list_recent_deleted, list_recent_modified, search_files
 from safevault.restore import restore_file
@@ -97,8 +102,13 @@ def get_dashboard_status() -> DashboardStatus:
         object_store_size=_object_store_size(),
         latest_sandbox=latest_sandbox,
         daemon_status=daemon.status,
+        watched_roots=daemon.watched_roots,
+        paused_roots=daemon.paused_roots,
+        missing_roots=daemon.missing_roots,
+        last_daemon_message=daemon.message,
         last_snapshot=None if last_snapshot is None else str(last_snapshot["started_at"]),
         last_backup=backup.last_success_at,
+        next_backup_due=backup.next_due_at,
         health_summary=health_summary,
     )
 
@@ -146,16 +156,12 @@ def list_roots_for_ui() -> list[RootSummary]:
 
 
 def add_root_from_ui(path: Path, profile: str) -> int:
-    root = path.expanduser().resolve()
-    if not root.exists() or not root.is_dir():
-        raise SafeVaultError(f"path is not an existing directory: {root}")
-    if profile not in VALID_PROFILES:
-        raise SafeVaultError("profile must be one of: " + ", ".join(sorted(VALID_PROFILES)))
-    conn = connect()
-    try:
-        return get_or_create_root(conn, root, profile)
-    finally:
-        conn.close()
+    return register_protected_root(
+        path,
+        profile,
+        source="ui",
+        fail_if_exists=True,
+    )
 
 
 def should_show_onboarding() -> bool:
@@ -182,12 +188,16 @@ def complete_onboarding_from_ui(
 ) -> dict[str, list[int]]:
     created_roots: list[int] = []
     snapshots: list[int] = []
+    selected_roots = [
+        Path(root_text).expanduser().resolve(strict=False) for root_text in roots
+    ]
+    if backup_target.strip():
+        validate_backup_target(backup_target, protected_roots=selected_roots)
     candidate_profiles = {
         str(Path(candidate.path).resolve(strict=False)): candidate.profile
         for candidate in auto_detect_candidates()
     }
-    for root_text in roots:
-        root_path = Path(root_text).expanduser().resolve(strict=False)
+    for root_path in selected_roots:
         profile = candidate_profiles.get(str(root_path), "coding")
         try:
             root_id = add_root_from_ui(root_path, profile)

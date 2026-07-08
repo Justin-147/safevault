@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from safevault.cli import app
 from safevault.daemon import run_scheduled_tasks
 from safevault.db import connect
-from safevault.protection import add_protected_root, list_enabled_policies
+from safevault.protection import add_protected_root, list_enabled_policies, list_watchable_policies
 
 
 def test_scheduled_snapshots_do_not_repeat_inside_interval(runner, sv_home, project) -> None:
@@ -71,3 +71,49 @@ def test_protect_pause_and_resume_affects_enabled_policies(runner, sv_home, proj
     resume = runner.invoke(app, ["protect", "resume", str(project)])
     assert resume.exit_code == 0
     assert len(list_enabled_policies()) == 1
+
+
+def test_pause_temporarily_excludes_policy(runner, sv_home, project) -> None:
+    add_protected_root(project, "coding")
+
+    result = runner.invoke(app, ["protect", "pause", str(project), "--duration", "30m"])
+
+    assert result.exit_code == 0
+    assert list_watchable_policies(now=datetime.now(UTC)) == []
+
+
+def test_paused_policy_auto_resumes_after_duration(runner, sv_home, project) -> None:
+    add_protected_root(project, "coding")
+    assert runner.invoke(app, ["protect", "pause", str(project), "--duration", "1m"]).exit_code == 0
+
+    later = datetime.now(UTC) + timedelta(minutes=2)
+
+    assert len(list_watchable_policies(now=later)) == 1
+
+
+def test_resume_clears_paused_until(runner, sv_home, project) -> None:
+    add_protected_root(project, "coding")
+    pause = runner.invoke(app, ["protect", "pause", str(project), "--duration", "30m"])
+    assert pause.exit_code == 0
+    assert runner.invoke(app, ["protect", "resume", str(project)]).exit_code == 0
+
+    conn = connect()
+    try:
+        row = conn.execute("SELECT paused_until FROM protection_policies").fetchone()
+    finally:
+        conn.close()
+    assert row["paused_until"] is None
+
+
+def test_pause_does_not_disable_watch_enabled_permanently(runner, sv_home, project) -> None:
+    add_protected_root(project, "coding")
+
+    pause = runner.invoke(app, ["protect", "pause", str(project), "--duration", "30m"])
+    assert pause.exit_code == 0
+
+    conn = connect()
+    try:
+        row = conn.execute("SELECT watch_enabled FROM protection_policies").fetchone()
+    finally:
+        conn.close()
+    assert int(row["watch_enabled"]) == 1

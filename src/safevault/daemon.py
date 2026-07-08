@@ -12,11 +12,17 @@ from typing import Literal
 from watchdog.observers import Observer
 
 from safevault.backup import run_due_backup
-from safevault.config import load_config
+from safevault.config import DaemonConfig, load_config
 from safevault.db import connect, utc_now_iso
 from safevault.errors import SafeVaultError
+from safevault.models import ProtectionPolicy
 from safevault.paths import ensure_home_layout, get_safevault_home
-from safevault.protection import list_enabled_policies
+from safevault.protection import (
+    list_enabled_policies,
+    list_protection,
+    policy_is_watchable,
+    root_safety_issue,
+)
 from safevault.snapshot import create_snapshot, relative_path
 from safevault.verify import run_verify
 from safevault.watcher import SafeVaultEventHandler
@@ -34,6 +40,113 @@ class DaemonStatus:
     lock_exists: bool
     stop_requested: bool
     protected_roots: int
+    watched_roots: int
+    paused_roots: int
+    missing_roots: int
+
+
+@dataclass(frozen=True)
+class DaemonPolicyCounts:
+    protected_roots: int
+    watched_roots: int
+    paused_roots: int
+    missing_roots: int
+
+
+@dataclass
+class WatchedRoot:
+    root_id: int
+    root_path: Path
+    handler: SafeVaultEventHandler
+    watch: object
+
+
+class DaemonPolicyRegistry:
+    def __init__(self, observer) -> None:
+        self.observer = observer
+        self.watched: dict[int, WatchedRoot] = {}
+
+    def sync(
+        self,
+        policies: list[ProtectionPolicy],
+        config: DaemonConfig,
+        *,
+        now: datetime | None = None,
+        snapshot_new: bool = False,
+    ) -> None:
+        current = datetime.now(UTC) if now is None else now
+        target: dict[int, ProtectionPolicy] = {}
+        for policy in policies:
+            root_path = Path(policy.root_path)
+            if policy.enabled and not root_path.exists():
+                self.unschedule(policy.root_id)
+                _create_notification(
+                    kind="root",
+                    severity="warning",
+                    title="Protected root unavailable",
+                    message=policy.root_path,
+                )
+                continue
+            issue = root_safety_issue(root_path)
+            if policy.enabled and issue is not None:
+                self.unschedule(policy.root_id)
+                _create_notification(
+                    kind="root",
+                    severity="warning",
+                    title="Unsafe protected root skipped",
+                    message=f"{policy.root_path}: {issue}",
+                )
+                continue
+            if not policy_is_watchable(policy, current):
+                self.unschedule(policy.root_id)
+                continue
+            target[policy.root_id] = policy
+
+        for root_id in list(self.watched):
+            watched = self.watched[root_id]
+            target_policy = target.get(root_id)
+            if target_policy is None or Path(target_policy.root_path) != watched.root_path:
+                self.unschedule(root_id)
+
+        for root_id, policy in target.items():
+            if root_id in self.watched:
+                continue
+            self.schedule(policy, config)
+            if snapshot_new:
+                _create_batched_snapshot(Path(policy.root_path), "daemon-policy-add")
+
+    def schedule(self, policy: ProtectionPolicy, config: DaemonConfig) -> None:
+        root_path = Path(policy.root_path)
+        handler = SafeVaultEventHandler(
+            root_path,
+            snapshot_func=lambda path, reason: _create_batched_snapshot(
+                path,
+                "watcher-change" if reason == "watch" else reason,
+            ),
+            debounce_seconds=float(config.watch_debounce_seconds),
+            warn_func=_record_bulk_delete_warning,
+            deleted_func=_record_deleted_from_watcher,
+            bulk_delete_threshold=config.bulk_delete_threshold,
+            bulk_delete_window_seconds=float(config.bulk_delete_window_seconds),
+        )
+        watch = self.observer.schedule(handler, str(root_path), recursive=True)
+        self.watched[policy.root_id] = WatchedRoot(
+            root_id=policy.root_id,
+            root_path=root_path,
+            handler=handler,
+            watch=watch,
+        )
+
+    def unschedule(self, root_id: int) -> None:
+        watched = self.watched.pop(root_id, None)
+        if watched is None:
+            return
+        watched.handler.stop()
+        self.observer.unschedule(watched.watch)
+
+    def stop_all(self) -> None:
+        for root_id in list(self.watched):
+            self.unschedule(root_id)
 
 
 class DaemonLock:
@@ -75,10 +188,10 @@ def get_daemon_stop_path() -> Path:
 
 
 def get_daemon_status() -> DaemonStatus:
+    counts = _daemon_policy_counts()
     conn = connect()
     try:
         row = conn.execute("SELECT * FROM daemon_state WHERE id = 1").fetchone()
-        roots = len(list_enabled_policies())
     finally:
         conn.close()
     if row is None:
@@ -90,7 +203,10 @@ def get_daemon_status() -> DaemonStatus:
             message=None,
             lock_exists=get_daemon_lock_path().exists(),
             stop_requested=get_daemon_stop_path().exists(),
-            protected_roots=roots,
+            protected_roots=counts.protected_roots,
+            watched_roots=counts.watched_roots,
+            paused_roots=counts.paused_roots,
+            missing_roots=counts.missing_roots,
         )
     return DaemonStatus(
         status=str(row["status"]),
@@ -102,8 +218,42 @@ def get_daemon_status() -> DaemonStatus:
         message=None if row["message"] is None else str(row["message"]),
         lock_exists=get_daemon_lock_path().exists(),
         stop_requested=get_daemon_stop_path().exists(),
-        protected_roots=roots,
+        protected_roots=counts.protected_roots,
+        watched_roots=counts.watched_roots,
+        paused_roots=counts.paused_roots,
+        missing_roots=counts.missing_roots,
     )
+
+
+def _daemon_policy_counts(now: datetime | None = None) -> DaemonPolicyCounts:
+    current = datetime.now(UTC) if now is None else now
+    protected = 0
+    watched = 0
+    paused = 0
+    missing = 0
+    for policy in list_protection():
+        if not policy.enabled:
+            continue
+        protected += 1
+        root_path = Path(policy.root_path)
+        if not root_path.exists():
+            missing += 1
+            continue
+        if _policy_is_paused(policy, current):
+            paused += 1
+            continue
+        if policy_is_watchable(policy, current):
+            watched += 1
+    return DaemonPolicyCounts(
+        protected_roots=protected,
+        watched_roots=watched,
+        paused_roots=paused,
+        missing_roots=missing,
+    )
+
+
+def _policy_is_paused(policy: ProtectionPolicy, now: datetime) -> bool:
+    return policy.paused_until is not None and _parse_iso(policy.paused_until) > now
 
 
 def request_daemon_stop() -> None:
@@ -119,7 +269,8 @@ def run_daemon(*, test_once: bool = False, poll_interval_seconds: float = 1.0) -
         with suppress(OSError):
             get_daemon_stop_path().unlink()
         _record_crash_recovery_if_needed(config.daemon.heartbeat_interval_seconds)
-        _write_daemon_state(status="running", message="starting")
+        _write_daemon_state(status="running", message="starting", reset_started=True)
+        had_error = False
         try:
             _run_startup_scan()
             _update_heartbeat("startup scan complete")
@@ -127,10 +278,12 @@ def run_daemon(*, test_once: bool = False, poll_interval_seconds: float = 1.0) -
                 return
             _run_watch_loop(poll_interval_seconds=poll_interval_seconds)
         except Exception as exc:
+            had_error = True
             _write_daemon_state(status="error", message=str(exc))
             raise
         finally:
-            _write_daemon_state(status="stopped", message="stopped")
+            if not had_error:
+                _write_daemon_state(status="stopped", message="stopped")
             with suppress(OSError):
                 get_daemon_stop_path().unlink()
 
@@ -298,51 +451,45 @@ def run_scheduled_tasks(*, now: datetime | None = None) -> None:
 
 def _run_watch_loop(*, poll_interval_seconds: float) -> None:
     config = load_config()
-    policies = list_enabled_policies()
     observer = Observer()
-    handlers: list[SafeVaultEventHandler] = []
-    for policy in policies:
-        root_path = Path(policy.root_path)
-        if not root_path.is_dir():
-            _create_notification(
-                kind="root",
-                severity="warning",
-                title="Protected root unavailable",
-                message=policy.root_path,
-            )
-            continue
-        handler = SafeVaultEventHandler(
-            root_path,
-            snapshot_func=lambda path, reason: _create_batched_snapshot(
-                path,
-                "watcher-change" if reason == "watch" else reason,
-            ),
-            debounce_seconds=float(config.daemon.watch_debounce_seconds),
-            warn_func=_record_bulk_delete_warning,
-            deleted_func=_record_deleted_from_watcher,
-            bulk_delete_threshold=config.daemon.bulk_delete_threshold,
-            bulk_delete_window_seconds=float(config.daemon.bulk_delete_window_seconds),
-        )
-        handlers.append(handler)
-        observer.schedule(handler, str(root_path), recursive=True)
+    registry = DaemonPolicyRegistry(observer)
+    registry.sync(list_protection(), config.daemon)
     observer.start()
+    last_policy_refresh = time.monotonic()
     try:
         while not get_daemon_stop_path().exists():
             _update_heartbeat("running")
+            now = time.monotonic()
+            if now - last_policy_refresh >= config.daemon.policy_refresh_seconds:
+                config = load_config()
+                registry.sync(list_protection(), config.daemon, snapshot_new=True)
+                last_policy_refresh = now
             run_scheduled_tasks()
             time.sleep(poll_interval_seconds)
     finally:
-        for handler in handlers:
-            handler.stop()
+        registry.stop_all()
         observer.stop()
         observer.join()
 
 
 def _run_startup_scan() -> None:
+    _notify_skipped_unsafe_roots()
     for policy in list_enabled_policies():
         root_path = Path(policy.root_path)
         if root_path.is_dir():
             _create_batched_snapshot(root_path, "pre-daemon-start")
+
+
+def _notify_skipped_unsafe_roots() -> None:
+    for policy in list_protection():
+        issue = root_safety_issue(Path(policy.root_path))
+        if issue is not None:
+            _create_notification(
+                kind="root",
+                severity="warning",
+                title="Unsafe protected root skipped",
+                message=f"{policy.root_path}: {issue}",
+            )
 
 
 def _record_deleted_from_watcher(root: Path, path: Path) -> None:
@@ -436,24 +583,38 @@ def _write_daemon_state(
     *,
     status: DaemonStatusValue,
     message: str | None = None,
+    reset_started: bool = False,
 ) -> None:
     now = utc_now_iso()
+    stopped_at = now if status in {"stopped", "error"} else None
     conn = connect()
     try:
         conn.execute(
             """
             INSERT INTO daemon_state(
-                id, pid, status, started_at, last_heartbeat_at, message
+                id, pid, status, started_at, last_heartbeat_at, message, stopped_at
             )
-            VALUES (1, ?, ?, ?, ?, ?)
+            VALUES (1, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 pid = excluded.pid,
                 status = excluded.status,
-                started_at = COALESCE(daemon_state.started_at, excluded.started_at),
+                started_at = CASE
+                    WHEN ? THEN excluded.started_at
+                    ELSE COALESCE(daemon_state.started_at, excluded.started_at)
+                END,
                 last_heartbeat_at = excluded.last_heartbeat_at,
-                message = excluded.message
+                message = excluded.message,
+                stopped_at = excluded.stopped_at
             """,
-            (os.getpid(), status, now, now, message),
+            (
+                os.getpid(),
+                status,
+                now,
+                now,
+                message,
+                stopped_at,
+                1 if reset_started else 0,
+            ),
         )
         conn.commit()
     finally:

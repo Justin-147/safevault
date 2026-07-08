@@ -6,7 +6,9 @@ from pathlib import Path
 
 from safevault.cli import app
 from safevault.config import BackupConfig, SafeVaultConfig, load_config, save_config
-from safevault.db import connect
+from safevault.db import connect, get_or_create_root
+from safevault.doctor import run_doctor
+from safevault.snapshot import create_snapshot
 
 
 def test_schema_migration_adds_auto_protection_tables(sv_home) -> None:
@@ -24,7 +26,7 @@ def test_schema_migration_adds_auto_protection_tables(sv_home) -> None:
     finally:
         conn.close()
 
-    assert version == 2
+    assert version == 3
     assert {
         "schema_migrations",
         "protection_policies",
@@ -33,7 +35,7 @@ def test_schema_migration_adds_auto_protection_tables(sv_home) -> None:
         "backup_jobs",
         "notifications",
     } <= tables
-    assert 2 in migrations
+    assert {2, 3} <= migrations
 
 
 def test_config_round_trips_extended_settings(sv_home, tmp_path: Path) -> None:
@@ -116,6 +118,24 @@ def test_protect_add_rejects_safevault_home(runner, sv_home) -> None:
     assert "SAFEVAULT_HOME" in result.output
 
 
+def test_init_rejects_safevault_home(runner, sv_home) -> None:
+    sv_home.mkdir(parents=True)
+
+    result = runner.invoke(app, ["init", str(sv_home)])
+
+    assert result.exit_code != 0
+    assert "SAFEVAULT_HOME" in result.output
+
+
+def test_snapshot_rejects_filesystem_root_when_auto_registering(
+    runner, sv_home, tmp_path: Path
+) -> None:
+    result = runner.invoke(app, ["snapshot", tmp_path.anchor])
+
+    assert result.exit_code != 0
+    assert "filesystem root" in result.output
+
+
 def test_protect_add_rejects_backup_target(runner, sv_home, project, tmp_path: Path) -> None:
     backup_target = tmp_path / "backup-target"
     backup_target.mkdir()
@@ -130,6 +150,46 @@ def test_protect_add_rejects_backup_target(runner, sv_home, project, tmp_path: P
 
     assert result.exit_code != 0
     assert "backup target" in result.output
+
+
+def test_protect_list_marks_unsafe_legacy_root(runner, sv_home) -> None:
+    sv_home.mkdir(parents=True)
+    conn = connect()
+    try:
+        get_or_create_root(conn, sv_home, "coding")
+    finally:
+        conn.close()
+
+    result = runner.invoke(app, ["protect", "list", "--json"])
+
+    assert result.exit_code == 0
+    rows = json.loads(result.output)
+    assert rows[0]["unsafe"] is True
+    assert "SAFEVAULT_HOME" in rows[0]["safety_issue"]
+
+
+def test_doctor_reports_unsafe_root(sv_home) -> None:
+    sv_home.mkdir(parents=True)
+    conn = connect()
+    try:
+        get_or_create_root(conn, sv_home, "coding")
+    finally:
+        conn.close()
+
+    result = run_doctor()
+
+    assert any("SAFEVAULT_HOME" in item for item in result.warning_items)
+
+
+def test_snapshot_rejects_safevault_home_when_auto_registering(sv_home) -> None:
+    sv_home.mkdir(parents=True)
+
+    try:
+        create_snapshot(sv_home)
+    except Exception as exc:
+        assert "SAFEVAULT_HOME" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("expected snapshot of SAFEVAULT_HOME to fail")
 
 
 def test_protect_add_rejects_filesystem_root(runner, sv_home, tmp_path: Path) -> None:

@@ -6,6 +6,8 @@ mypy src
 pytest -q
 python -m safevault --help
 python -m safevault --version
+python -m safevault daemon run --test-once
+python -m safevault tray --check
 python - <<'PY'
 from safevault.ui.app import create_app
 app = create_app(token="test-token")

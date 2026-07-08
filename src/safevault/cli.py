@@ -33,7 +33,6 @@ from safevault.daemon import (
 from safevault.db import (
     connect,
     find_containing_root,
-    get_or_create_root,
     get_root_by_path,
     list_roots,
 )
@@ -49,8 +48,10 @@ from safevault.protection import (
     auto_detect_candidates,
     list_protection,
     pause_protected_root,
+    register_protected_root,
     remove_protected_root,
     resume_protected_root,
+    root_safety_issue,
 )
 from safevault.prune import prune_unreferenced_objects
 from safevault.recent import (
@@ -118,7 +119,7 @@ def handle_errors[F: Callable[..., object]](func: F) -> F:
         try:
             return func(*args, **kwargs)
         except SafeVaultError as exc:
-            console.print(f"Error: {exc}", style="red")
+            console.print(f"Error: {exc}", style="red", markup=False)
             raise typer.Exit(1) from None
 
     return wrapper  # type: ignore[return-value]
@@ -142,11 +143,12 @@ def init_command(path: Path, profile: str = typer.Option("coding", "--profile"))
     if not root.is_dir():
         raise SafeVaultError(f"path is not a directory: {root}")
     ensure_home_layout()
-    conn = connect()
-    try:
-        root_id = get_or_create_root(conn, root, profile)
-    finally:
-        conn.close()
+    root_id = register_protected_root(
+        root,
+        profile,
+        source="init",
+        fail_if_exists=False,
+    )
     console.print(f"Initialized SafeVault root {root_id}: {root}")
 
 
@@ -262,6 +264,9 @@ def daemon_status(json_output: bool = typer.Option(False, "--json")) -> None:
         "lock_exists": status.lock_exists,
         "stop_requested": status.stop_requested,
         "protected_roots": status.protected_roots,
+        "watched_roots": status.watched_roots,
+        "paused_roots": status.paused_roots,
+        "missing_roots": status.missing_roots,
     }
     if json_output:
         print_json(data)
@@ -310,21 +315,24 @@ def daemon_uninstall() -> None:
 def backup_configure(
     target: Annotated[Path, typer.Option("--target")],
     schedule: str = typer.Option("daily", "--schedule"),
+    time: str = typer.Option("21:00", "--time"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
     if schedule not in {"manual", "daily", "weekly"}:
         raise SafeVaultError("backup schedule must be one of: manual, daily, weekly")
-    config = configure_backup(target, cast(BackupSchedule, schedule))
+    config = configure_backup(target, cast(BackupSchedule, schedule), time=time)
     data = {
         "enabled": config.backup.enabled,
         "target": config.backup.target,
         "schedule": config.backup.schedule,
+        "time": config.backup.time,
     }
     if json_output:
         print_json(data)
         return
     console.print(f"Backup configured: {config.backup.target}")
     console.print(f"Schedule: {config.backup.schedule}")
+    console.print(f"Time: {config.backup.time}")
 
 
 @backup_app.command(name="status")
@@ -340,6 +348,8 @@ def backup_status(json_output: bool = typer.Option(False, "--json")) -> None:
         "last_error": status.last_error,
         "latest_archive": status.latest_archive,
         "latest_object_count": status.latest_object_count,
+        "time": status.time,
+        "next_due_at": status.next_due_at,
     }
     if json_output:
         print_json(data)
@@ -732,8 +742,11 @@ def roots_command(json_output: bool = typer.Option(False, "--json")) -> None:
 @handle_errors
 def protect_list(json_output: bool = typer.Option(False, "--json")) -> None:
     policies = list_protection()
-    data = [
-        {
+    data = []
+    for policy in policies:
+        safety_issue = root_safety_issue(Path(policy.root_path))
+        data.append(
+            {
             "root_id": policy.root_id,
             "path": policy.root_path,
             "enabled": policy.enabled,
@@ -745,9 +758,10 @@ def protect_list(json_output: bool = typer.Option(False, "--json")) -> None:
             "paused_until": policy.paused_until,
             "updated_at": policy.updated_at,
             "exists": Path(policy.root_path).exists(),
+            "unsafe": safety_issue is not None,
+            "safety_issue": safety_issue,
         }
-        for policy in policies
-    ]
+        )
     if json_output:
         print_json(data)
         return
@@ -759,6 +773,7 @@ def protect_list(json_output: bool = typer.Option(False, "--json")) -> None:
         "Watch",
         "Auto Snapshot",
         "Paused Until",
+        "Unsafe",
         "Exists",
     )
     for item in data:
@@ -770,6 +785,7 @@ def protect_list(json_output: bool = typer.Option(False, "--json")) -> None:
             "yes" if item["watch_enabled"] else "no",
             "yes" if item["auto_snapshot"] else "no",
             "" if item["paused_until"] is None else str(item["paused_until"]),
+            "" if not item["unsafe"] else str(item["safety_issue"]),
             "yes" if item["exists"] else "no",
         )
     console.print(table)
@@ -1065,6 +1081,12 @@ def ui_command(
         import uvicorn
 
         from safevault.ui.app import create_app
+        from safevault.ui.session import (
+            clear_ui_session,
+            create_ui_session,
+            ui_url,
+            write_ui_session,
+        )
     except ModuleNotFoundError as exc:
         if exc.name in {"fastapi", "uvicorn", "jinja2", "multipart"}:
             raise SafeVaultError("Install UI dependencies with: pip install -e '.[ui]'") from exc
@@ -1075,13 +1097,18 @@ def ui_command(
         raise
 
     token = test_token or secrets.token_urlsafe(32)
-    url = f"http://{host}:{port}/?token={token}"
+    session = create_ui_session(host, port, token)
+    write_ui_session(session)
+    url = ui_url(session)
     console.print("SafeVault local UI")
     console.print("Local UI only. Not a remote admin console.")
     console.print(url)
     if open_browser:
         webbrowser.open(url)
-    uvicorn.run(create_app(token=token), host=host, port=port)
+    try:
+        uvicorn.run(create_app(token=token), host=host, port=port)
+    finally:
+        clear_ui_session(session)
 
 
 @app.command(name="retention-plan")

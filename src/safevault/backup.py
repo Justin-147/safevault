@@ -28,18 +28,31 @@ class BackupStatus:
     last_error: str | None
     latest_archive: str | None
     latest_object_count: int | None
+    time: str
+    next_due_at: str | None
 
 
-def configure_backup(target: Path, schedule: BackupSchedule = "daily") -> SafeVaultConfig:
+def configure_backup(
+    target: Path,
+    schedule: BackupSchedule = "daily",
+    *,
+    time: str | None = None,
+) -> SafeVaultConfig:
     target_path = target.expanduser().resolve(strict=False)
-    target_path.mkdir(parents=True, exist_ok=True)
     conn = connect()
     try:
         roots = [Path(root.path) for root in list_roots(conn)]
     finally:
         conn.close()
     validate_backup_target(str(target_path), protected_roots=roots)
-    config = with_backup(load_config(), target=target_path, schedule=schedule, enabled=True)
+    target_path.mkdir(parents=True, exist_ok=True)
+    config = with_backup(
+        load_config(),
+        target=target_path,
+        schedule=schedule,
+        time=time,
+        enabled=True,
+    )
     save_config(config)
     return config
 
@@ -72,15 +85,26 @@ def get_backup_status() -> BackupStatus:
         ).fetchone()
     finally:
         conn.close()
+    last_success_at = None if success is None else str(success["finished_at"])
+    next_due = next_due_after(
+        _parse_iso(last_success_at) if last_success_at is not None else None,
+        config.backup.schedule,
+        config.backup.time,
+        datetime.now(UTC),
+    )
     return BackupStatus(
         enabled=config.backup.enabled,
         target=config.backup.target,
         schedule=config.backup.schedule,
-        last_success_at=None if success is None else str(success["finished_at"]),
+        last_success_at=last_success_at,
         last_failure_at=None if failure is None else str(failure["finished_at"]),
         last_error=None if failure is None else str(failure["error"]),
         latest_archive=None if success is None else str(success["archive_path"]),
         latest_object_count=None if success is None else int(success["object_count"] or 0),
+        time=config.backup.time,
+        next_due_at=None
+        if next_due is None
+        else next_due.isoformat(timespec="microseconds"),
     )
 
 
@@ -118,15 +142,62 @@ def run_due_backup(*, now: datetime | None = None) -> bool:
         return False
     status = get_backup_status()
     current = now or datetime.now(UTC)
-    if status.last_success_at is None:
-        run_backup()
-        return True
-    last = _parse_iso(status.last_success_at)
-    interval = timedelta(days=1 if config.backup.schedule == "daily" else 7)
-    if current - last >= interval:
+    last = _parse_iso(status.last_success_at) if status.last_success_at is not None else None
+    next_due = next_due_after(last, config.backup.schedule, config.backup.time, current)
+    if next_due is not None and current >= next_due:
         run_backup()
         return True
     return False
+
+
+def next_due_after(
+    last_success: datetime | None,
+    schedule: str,
+    time_of_day: str,
+    now: datetime,
+) -> datetime | None:
+    if schedule == "manual":
+        return None
+    hour, minute = _parse_time_of_day(time_of_day)
+    local_now = now.astimezone()
+    due_today_local = local_now.replace(
+        hour=hour,
+        minute=minute,
+        second=0,
+        microsecond=0,
+    )
+    due_today = due_today_local.astimezone(UTC)
+    if last_success is None:
+        return due_today
+    last = last_success.astimezone(UTC)
+    if schedule == "daily":
+        if last >= due_today:
+            return (due_today_local + timedelta(days=1)).astimezone(UTC)
+        return due_today
+    if schedule == "weekly":
+        candidate_local = (
+            last.astimezone().replace(
+                hour=hour,
+                minute=minute,
+                second=0,
+                microsecond=0,
+            )
+            + timedelta(days=7)
+        )
+        if candidate_local < due_today_local:
+            candidate_local = due_today_local
+        return candidate_local.astimezone(UTC)
+    raise SafeVaultError("backup schedule must be one of: manual, daily, weekly")
+
+
+def _parse_time_of_day(value: str) -> tuple[int, int]:
+    parts = value.split(":")
+    if len(parts) != 2 or not all(part.isdigit() for part in parts):
+        raise SafeVaultError("backup time must use HH:MM")
+    hour, minute = int(parts[0]), int(parts[1])
+    if hour > 23 or minute > 59:
+        raise SafeVaultError("backup time must use HH:MM")
+    return hour, minute
 
 
 def _start_backup_job(target: Path) -> int:

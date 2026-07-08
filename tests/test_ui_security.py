@@ -12,6 +12,7 @@ from safevault.exporter import export_vault
 from safevault.paths import ensure_home_layout, get_sandboxes_dir
 from safevault.snapshot import create_snapshot
 from safevault.ui.app import create_app
+from safevault.ui.session import read_ui_session, ui_url
 
 TOKEN = "test-token"
 
@@ -337,9 +338,12 @@ def test_cli_ui_host_security_and_test_token(
     calls: dict[str, object] = {}
 
     def fake_run(app_obj, host: str, port: int) -> None:
+        session = read_ui_session()
+        assert session is not None
         calls["host"] = host
         calls["port"] = port
         calls["token"] = app_obj.state.safevault_ui_token
+        calls["url"] = ui_url(session)
 
     monkeypatch.setattr(uvicorn, "run", fake_run)
     local = runner.invoke(
@@ -356,4 +360,20 @@ def test_cli_ui_host_security_and_test_token(
     )
     assert local.exit_code == 0
     assert "known-test-token" in local.output
-    assert calls == {"host": "127.0.0.1", "port": 9876, "token": "known-test-token"}
+    assert calls == {
+        "host": "127.0.0.1",
+        "port": 9876,
+        "token": "known-test-token",
+        "url": "http://127.0.0.1:9876/?token=known-test-token",
+    }
+
+
+def test_ui_command_removes_session_after_shutdown(runner, sv_home: Path, monkeypatch) -> None:
+    import uvicorn
+
+    monkeypatch.setattr(uvicorn, "run", lambda app_obj, host, port: None)
+
+    result = runner.invoke(app, ["ui", "--test-token", "session-token"])
+
+    assert result.exit_code == 0
+    assert read_ui_session() is None
