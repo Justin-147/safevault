@@ -20,6 +20,9 @@ Added:
 - Recovery Home now shows a restore timeline backed by continuous protection
   metadata, so users can browse recent file changes alongside deleted and
   modified file lists.
+- Recovery Center history now shows user-facing restore-point labels instead of
+  snapshot/version IDs or object hashes, while keeping exact version IDs hidden
+  for restore submissions.
 - AI/Codex protection mode records `before-ai-change` and `after-ai-change`
   restore points for sandboxed Codex/Cursor commands, plus important
   `after-large-change` restore points when the watcher sees high-volume edits.

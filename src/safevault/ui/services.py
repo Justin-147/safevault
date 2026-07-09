@@ -527,9 +527,15 @@ def list_versions_for_file(path: Path) -> list[VersionEntry]:
             raise SafeVaultError(f"file has no tracked versions: {rel_path}")
         rows = conn.execute(
             """
-            SELECT v.*, f.file_kind
+            SELECT
+              v.*,
+              f.file_kind,
+              s.reason AS snapshot_reason,
+              rp.label AS restore_label
             FROM versions v
             JOIN files f ON f.id = v.file_id
+            LEFT JOIN snapshots s ON s.id = v.snapshot_id
+            LEFT JOIN restore_points rp ON rp.snapshot_id = v.snapshot_id
             WHERE v.file_id = ?
             ORDER BY v.id DESC
             """,
@@ -540,6 +546,15 @@ def list_versions_for_file(path: Path) -> list[VersionEntry]:
     return [
         VersionEntry(
             version_id=int(row["id"]),
+            label=_recovery_label(
+                reason=None
+                if row["snapshot_reason"] is None
+                else str(row["snapshot_reason"]),
+                restore_label=None
+                if row["restore_label"] is None
+                else str(row["restore_label"]),
+                deleted=bool(int(row["is_deleted_marker"])),
+            ),
             captured_at=str(row["captured_at"]),
             size=None if row["size"] is None else int(row["size"]),
             content_hash=None if row["content_hash"] is None else str(row["content_hash"]),
@@ -548,6 +563,30 @@ def list_versions_for_file(path: Path) -> list[VersionEntry]:
         )
         for row in rows
     ]
+
+
+def _recovery_label(
+    *, reason: str | None, restore_label: str | None, deleted: bool
+) -> str:
+    if deleted:
+        return "Deleted file marker"
+    if restore_label:
+        return restore_label
+    labels = {
+        "before-ai-change": "Before AI modification",
+        "after-ai-change": "After AI modification",
+        "after-large-change": "After large change",
+        "automatic-save": "Automatic save",
+        "watcher-change": "Automatic save",
+        "onboarding-initial": "Initial protection point",
+        "pre-daemon-start": "Startup safety point",
+        "daily-checkpoint": "Daily checkpoint",
+    }
+    if reason in labels:
+        return labels[reason]
+    if reason and "checkpoint" in reason:
+        return "Checkpoint"
+    return "Previous version"
 
 
 def restore_from_ui(

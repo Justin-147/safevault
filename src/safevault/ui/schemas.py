@@ -47,6 +47,7 @@ class RootDetail:
 @dataclass(frozen=True)
 class VersionEntry:
     version_id: int
+    label: str
     captured_at: str
     size: int | None
     content_hash: str | None

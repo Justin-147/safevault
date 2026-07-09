@@ -178,6 +178,10 @@ The GUI home page is now a recovery-first page. After onboarding, it shows:
 - file search, including deleted-only search;
 - quick actions for adding folders, verify, backup, and export/import.
 
+The Recovery Center history view avoids exposing snapshot IDs, version IDs, and
+object hashes in normal UI labels; it shows restore-point names and timestamps
+while keeping the technical identifiers hidden inside form submissions.
+
 ## Onboarding
 
 On first local GUI open, SafeVault shows an onboarding flow. It suggests common

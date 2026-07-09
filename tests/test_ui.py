@@ -263,6 +263,19 @@ def test_ui_versions_restore_and_deleted_page(sv_home: Path, project: Path) -> N
     create_snapshot(project, reason="second")
     file_path.unlink()
     create_snapshot(project, reason="deleted")
+    conn = connect()
+    try:
+        first_version = conn.execute(
+            """
+            SELECT id FROM versions
+            WHERE rel_path = 'note.txt' AND is_deleted_marker = 0
+            ORDER BY id
+            LIMIT 1
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+    assert first_version is not None
 
     with TestClient(create_app(token=TOKEN)) as client:
         client.get("/", params={"token": TOKEN})
@@ -272,16 +285,33 @@ def test_ui_versions_restore_and_deleted_page(sv_home: Path, project: Path) -> N
 
         versions = client.get("/versions", params={"file": str(file_path)})
         assert versions.status_code == 200
-        assert "Versions / Restore" in versions.text
+        assert "Recovery Center" in versions.text
+        assert "Restore point" in versions.text
         assert "note.txt" in versions.text
+        assert "Hash" not in versions.text
+        assert "<th>Version</th>" not in versions.text
 
         restored = client.post(
             "/restore",
-            data={"file": str(file_path), "mode": "latest", "confirmation": "RESTORE"},
+            data={"file": str(file_path), "mode": "latest", "confirmation": "CONFIRM"},
         )
         assert restored.status_code == 200
         assert "Restored to" in restored.text
         assert file_path.read_text(encoding="utf-8") == "second"
+
+        old_copy = project / "note-first.txt"
+        restored_old = client.post(
+            "/restore",
+            data={
+                "file": str(file_path),
+                "mode": "version",
+                "version_id": str(first_version["id"]),
+                "to_path": str(old_copy),
+                "confirmation": "CONFIRM",
+            },
+        )
+        assert restored_old.status_code == 200
+        assert old_copy.read_text(encoding="utf-8") == "first"
 
 
 def test_ui_sandbox_dry_run_preserves_project(sv_home: Path, project: Path) -> None:
