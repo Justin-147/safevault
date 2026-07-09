@@ -33,6 +33,9 @@ Added:
   an error notification.
 - Productization docs now include English and Chinese install/user guides plus
   conservative Windows user-startup helper scripts for daemon/tray setup.
+- Documentation now includes a `docs/README.md` index and expanded English and
+  Chinese user guides covering startup, folder protection, restore, pause,
+  disable, backup, limitations, AI rollback, and mass-change recovery.
 
 ## 0.2.0rc1
 

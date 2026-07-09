@@ -32,11 +32,36 @@ def test_readme_links_chinese_documentation() -> None:
     root = Path(__file__).resolve().parents[1]
     readme = (root / "README.md").read_text(encoding="utf-8")
     chinese_readme = (root / "README.zh-CN.md").read_text(encoding="utf-8")
+    docs_index = (root / "docs" / "README.md").read_text(encoding="utf-8")
 
     assert "README.zh-CN.md" in readme
     assert "docs/zh/GUI_GUIDE.md" in chinese_readme
     assert "docs/zh/RECOVERY_PLAYBOOK.md" in chinese_readme
     assert "docs/zh/auto-protection.md" in chinese_readme
+    assert "INSTALL_EN.md" in docs_index
+    assert "USER_GUIDE_ZH.md" in docs_index
+
+
+def test_user_guides_cover_v1_product_topics() -> None:
+    root = Path(__file__).resolve().parents[1]
+    english = (root / "docs" / "USER_GUIDE_EN.md").read_text(encoding="utf-8")
+    chinese = (root / "docs" / "USER_GUIDE_ZH.md").read_text(encoding="utf-8")
+    for phrase in (
+        "Protect Folders",
+        "Backup",
+        "Pause Or Stop",
+        "Known Limits",
+        "emergency-mass-change",
+    ):
+        assert phrase in english
+    for phrase in (
+        "保护文件夹",
+        "备份",
+        "暂停或关闭保护",
+        "已知限制",
+        "emergency-mass-change",
+    ):
+        assert phrase in chinese
 
 
 def test_chinese_readme_has_required_command_and_status_terms() -> None:

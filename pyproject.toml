@@ -49,6 +49,7 @@ packages = ["src/safevault"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "README.zh-CN.md" = "safevault/ui/docs/README.zh-CN.md"
+"docs/README.md" = "safevault/ui/docs/README.md"
 "docs/INSTALL_EN.md" = "safevault/ui/docs/INSTALL_EN.md"
 "docs/INSTALL_ZH.md" = "safevault/ui/docs/INSTALL_ZH.md"
 "docs/USER_GUIDE_EN.md" = "safevault/ui/docs/USER_GUIDE_EN.md"

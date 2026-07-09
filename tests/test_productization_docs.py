@@ -49,3 +49,5 @@ def test_release_check_includes_productization_guides() -> None:
     ):
         assert name in pyproject
         assert name in release_check
+    assert '"docs/README.md"' in pyproject
+    assert "safevault/ui/docs/README.md" in release_check

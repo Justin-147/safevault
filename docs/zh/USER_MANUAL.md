@@ -32,7 +32,7 @@ safevault versions ~/Projects/myapp/file.py
 safevault restore ~/Projects/myapp/file.py --latest
 ```
 
-在 GUI 中恢复文件必须输入 `RESTORE`，因为恢复会写入目标路径；如果目标已存在，SafeVault 会先保存当前版本。
+GUI 普通恢复使用本地确认动作；高级恢复和旧流程仍兼容输入 `RESTORE`。恢复会写入目标路径；如果目标已存在，SafeVault 会先保存当前版本。
 
 ## 6. 使用 Codex 前运行 safevault run
 
@@ -102,4 +102,4 @@ safevault unprotect ~/Projects/myapp --dry-run
 safevault unprotect ~/Projects/myapp --confirm
 ```
 
-其他 GUI 确认词包括：apply 删除输入 `ALLOW DELETE`，prune 输入 `PRUNE`，覆盖导出输入 `OVERWRITE EXPORT`，跳过导出校验输入 `SKIP VERIFY`，导入输入 `IMPORT`，覆盖导入目标输入 `OVERWRITE`。当前版本仍是 `0.1.0rc1` release candidate，不是 stable/final。
+其他 GUI 确认词包括：apply 删除输入 `ALLOW DELETE`，prune 输入 `PRUNE`，覆盖导出输入 `OVERWRITE EXPORT`，跳过导出校验输入 `SKIP VERIFY`，导入输入 `IMPORT`，覆盖导入目标输入 `OVERWRITE`。当前版本仍是 `0.2.0rc1` release candidate，不是 stable/final。
