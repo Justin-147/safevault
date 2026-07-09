@@ -42,6 +42,7 @@ from safevault.ui.schemas import (
     RootDetail,
     RootSummary,
     SandboxSummary,
+    TimelineEntry,
     VersionEntry,
 )
 from safevault.verify import VerifyResult, run_verify
@@ -400,7 +401,11 @@ def unprotect_from_ui(root_id: int, confirmation: str) -> dict[str, object]:
     conn = connect()
     try:
         with conn:
+            conn.execute("DELETE FROM ai_change_sessions WHERE root_id = ?", (root_id,))
             conn.execute("DELETE FROM change_batches WHERE root_id = ?", (root_id,))
+            conn.execute("DELETE FROM file_events WHERE root_id = ?", (root_id,))
+            conn.execute("DELETE FROM version_timeline WHERE root_id = ?", (root_id,))
+            conn.execute("DELETE FROM restore_points WHERE root_id = ?", (root_id,))
             conn.execute("DELETE FROM protection_policies WHERE root_id = ?", (root_id,))
             conn.execute("DELETE FROM events WHERE root_id = ?", (root_id,))
             conn.execute(
@@ -444,6 +449,38 @@ def list_recent_modified_for_ui(since: str = "24h") -> list[dict[str, object]]:
             "file_kind": entry.file_kind,
         }
         for entry in list_recent_modified(since=since, limit=20)
+    ]
+
+
+def timeline_for_ui(limit: int = 20) -> list[TimelineEntry]:
+    conn = connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+              r.path AS root_path,
+              vt.rel_path,
+              vt.event_type,
+              vt.title,
+              vt.occurred_at
+            FROM version_timeline vt
+            JOIN roots r ON r.id = vt.root_id
+            ORDER BY vt.occurred_at DESC, vt.id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [
+        TimelineEntry(
+            root_path=str(row["root_path"]),
+            rel_path=str(row["rel_path"]),
+            event_type=str(row["event_type"]),
+            title=str(row["title"]),
+            occurred_at=str(row["occurred_at"]),
+        )
+        for row in rows
     ]
 
 

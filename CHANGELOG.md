@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+Added:
+- Continuous protection metadata tables for file events, version timeline
+  entries, and restore points while keeping the existing BLAKE3 object store and
+  SQLite snapshot/version model.
+- Smart retention planning that balances high-frequency recent versions,
+  hourly/daily recovery points, latest file versions, and important checkpoints
+  without deleting data automatically.
+- Recovery Home now shows a restore timeline backed by continuous protection
+  metadata, so users can browse recent file changes alongside deleted and
+  modified file lists.
+- AI/Codex protection mode records `before-ai-change` and `after-ai-change`
+  restore points for sandboxed Codex/Cursor commands, plus important
+  `after-large-change` restore points when the watcher sees high-volume edits.
+- Productization docs now include English and Chinese install/user guides plus
+  conservative Windows user-startup helper scripts for daemon/tray setup.
+
 ## 0.2.0rc1
 
 SafeVault 0.2.0rc1 introduces automatic protection mode while remaining a

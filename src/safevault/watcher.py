@@ -23,7 +23,9 @@ class SafeVaultEventHandler(FileSystemEventHandler):
         debounce_seconds: float = 1.0,
         warn_func: Callable[[str], None] | None = None,
         deleted_func: Callable[[Path, Path], None] | None = None,
+        moved_func: Callable[[Path, Path, Path], None] | None = None,
         bulk_delete_threshold: int = 20,
+        bulk_change_threshold: int = 100,
         bulk_delete_window_seconds: float = 30,
         bulk_delete_warning_cooldown_seconds: float = 60,
     ) -> None:
@@ -32,13 +34,18 @@ class SafeVaultEventHandler(FileSystemEventHandler):
         self.debounce_seconds = debounce_seconds
         self.warn_func = warn_func or print
         self.deleted_func = deleted_func
+        self.moved_func = moved_func
         self.bulk_delete_threshold = bulk_delete_threshold
+        self.bulk_change_threshold = bulk_change_threshold
         self.bulk_delete_window_seconds = bulk_delete_window_seconds
         self.bulk_delete_warning_cooldown_seconds = bulk_delete_warning_cooldown_seconds
         self.last_bulk_delete_warning_at = -bulk_delete_warning_cooldown_seconds
+        self.last_bulk_change_warning_at = -bulk_delete_warning_cooldown_seconds
         self.pending = False
+        self.large_change_pending = False
         self.last_event_at = 0.0
         self.delete_times: list[float] = []
+        self.change_times: list[float] = []
         self._timer: threading.Timer | None = None
         self._lock = threading.Lock()
 
@@ -53,6 +60,25 @@ class SafeVaultEventHandler(FileSystemEventHandler):
         with self._lock:
             self.pending = True
             self.last_event_at = current_time
+            if event_type in {"created", "modified", "deleted", "moved"}:
+                self.change_times.append(current_time)
+                self.change_times = [
+                    value
+                    for value in self.change_times
+                    if current_time - value <= self.bulk_delete_window_seconds
+                ]
+                if (
+                    len(self.change_times) > self.bulk_change_threshold
+                    and current_time - self.last_bulk_change_warning_at
+                    >= self.bulk_delete_warning_cooldown_seconds
+                ):
+                    self.large_change_pending = True
+                    self.last_bulk_change_warning_at = current_time
+                    self.warn_func(
+                        "High-risk warning: more than "
+                        f"{self.bulk_change_threshold} file change events in "
+                        f"{int(self.bulk_delete_window_seconds)} seconds"
+                    )
             if event_type == "deleted":
                 if self.deleted_func is not None:
                     self.deleted_func(self.root, path_obj)
@@ -94,7 +120,9 @@ class SafeVaultEventHandler(FileSystemEventHandler):
             if not self.pending:
                 return False
             self.pending = False
-        self.snapshot_func(self.root, "watch")
+            reason = "after-large-change" if self.large_change_pending else "watch"
+            self.large_change_pending = False
+        self.snapshot_func(self.root, reason)
         return True
 
     def on_any_event(self, event: FileSystemEvent) -> None:
@@ -106,6 +134,11 @@ class SafeVaultEventHandler(FileSystemEventHandler):
                 dest_path is None or not self._is_under_root(dest_path)
             ):
                 self.note_event("deleted", src_path)
+                return
+            if dest_path is not None and self._is_under_root(dest_path):
+                if self.moved_func is not None:
+                    self.moved_func(self.root, src_path, dest_path)
+                self.note_event("moved", dest_path)
                 return
         event_path = getattr(event, "dest_path", None) or event.src_path
         self.note_event(self.classify_event(event), str(event_path))

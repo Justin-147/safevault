@@ -63,6 +63,15 @@ class DeletedEntry:
 
 
 @dataclass(frozen=True)
+class TimelineEntry:
+    root_path: str
+    rel_path: str
+    event_type: str
+    title: str
+    occurred_at: str
+
+
+@dataclass(frozen=True)
 class SandboxSummary:
     id: str
     original_path: str

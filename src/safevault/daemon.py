@@ -13,7 +13,13 @@ from watchdog.observers import Observer
 
 from safevault.backup import run_due_backup
 from safevault.config import DaemonConfig, load_config
-from safevault.db import connect, utc_now_iso
+from safevault.db import (
+    connect,
+    insert_file_event,
+    insert_restore_point,
+    insert_version_timeline,
+    utc_now_iso,
+)
 from safevault.errors import SafeVaultError
 from safevault.models import ProtectionPolicy
 from safevault.paths import ensure_home_layout, get_safevault_home
@@ -124,8 +130,9 @@ class DaemonPolicyRegistry:
                 "watcher-change" if reason == "watch" else reason,
             ),
             debounce_seconds=float(config.watch_debounce_seconds),
-            warn_func=_record_bulk_delete_warning,
+            warn_func=_record_high_risk_warning,
             deleted_func=_record_deleted_from_watcher,
+            moved_func=_record_moved_from_watcher,
             bulk_delete_threshold=config.bulk_delete_threshold,
             bulk_delete_window_seconds=float(config.bulk_delete_window_seconds),
         )
@@ -325,11 +332,12 @@ def record_deleted_marker(root_path: Path, deleted_path: Path, *, source: str = 
         )
         assert cur.lastrowid is not None
         snapshot_id = int(cur.lastrowid)
+        file_id = int(file_row["id"])
         conn.execute(
             "UPDATE files SET status = 'deleted', last_seen_at = ? WHERE id = ?",
-            (now, int(file_row["id"])),
+            (now, file_id),
         )
-        conn.execute(
+        version_cur = conn.execute(
             """
             INSERT INTO versions(
                 file_id, snapshot_id, rel_path, content_hash, size, mtime_ns, mode,
@@ -338,7 +346,7 @@ def record_deleted_marker(root_path: Path, deleted_path: Path, *, source: str = 
             VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 1)
             """,
             (
-                int(file_row["id"]),
+                file_id,
                 snapshot_id,
                 rel_path,
                 file_row["size"],
@@ -347,12 +355,41 @@ def record_deleted_marker(root_path: Path, deleted_path: Path, *, source: str = 
                 now,
             ),
         )
+        assert version_cur.lastrowid is not None
+        insert_version_timeline(
+            conn,
+            root_id=int(file_row["root_id"]),
+            file_id=file_id,
+            version_id=int(version_cur.lastrowid),
+            snapshot_id=snapshot_id,
+            rel_path=rel_path,
+            event_type="deleted",
+            occurred_at=now,
+        )
         conn.execute(
             """
             INSERT INTO events(root_id, event_type, rel_path, old_rel_path, detected_at, source)
             VALUES (?, 'deleted', ?, NULL, ?, ?)
             """,
             (int(file_row["root_id"]), rel_path, now, source),
+        )
+        insert_file_event(
+            conn,
+            root_id=int(file_row["root_id"]),
+            file_id=file_id,
+            snapshot_id=snapshot_id,
+            event_type="deleted",
+            rel_path=rel_path,
+            detected_at=now,
+            source=source,
+        )
+        insert_restore_point(
+            conn,
+            root_id=int(file_row["root_id"]),
+            snapshot_id=snapshot_id,
+            reason="watcher-delete",
+            created_at=now,
+            source=source,
         )
         record_notification(
             conn,
@@ -501,6 +538,46 @@ def _notify_skipped_unsafe_roots() -> None:
 
 def _record_deleted_from_watcher(root: Path, path: Path) -> None:
     record_deleted_marker(root, path)
+
+
+def _record_moved_from_watcher(root: Path, src: Path, dest: Path) -> None:
+    record_moved_event(root, src, dest)
+
+
+def record_moved_event(root_path: Path, src_path: Path, dest_path: Path) -> bool:
+    root = root_path.expanduser().resolve(strict=False)
+    try:
+        old_rel = relative_path(root, src_path.expanduser().resolve(strict=False))
+        new_rel = relative_path(root, dest_path.expanduser().resolve(strict=False))
+    except ValueError:
+        return False
+    conn = connect()
+    try:
+        row = conn.execute("SELECT id FROM roots WHERE path = ?", (str(root),)).fetchone()
+        if row is None:
+            return False
+        root_id = int(row["id"])
+        now = utc_now_iso()
+        conn.execute(
+            """
+            INSERT INTO events(root_id, event_type, rel_path, old_rel_path, detected_at, source)
+            VALUES (?, 'moved', ?, ?, ?, 'daemon')
+            """,
+            (root_id, new_rel, old_rel, now),
+        )
+        insert_file_event(
+            conn,
+            root_id=root_id,
+            event_type="moved",
+            rel_path=new_rel,
+            old_rel_path=old_rel,
+            detected_at=now,
+            source="daemon",
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
 
 
 def _run_due_snapshots(now: datetime) -> None:
@@ -677,13 +754,18 @@ def _record_crash_recovery_if_needed(heartbeat_interval_seconds: int) -> None:
         conn.close()
 
 
-def _record_bulk_delete_warning(message: str) -> None:
+def _record_high_risk_warning(message: str) -> None:
+    is_delete = "delete" in message.lower()
     _create_notification(
-        kind="bulk-delete",
+        kind="bulk-delete" if is_delete else "large-change",
         severity="warning",
-        title="Bulk delete activity detected",
+        title="Bulk delete activity detected" if is_delete else "Large file change detected",
         message=message,
     )
+
+
+def _record_bulk_delete_warning(message: str) -> None:
+    _record_high_risk_warning(message)
 
 
 def _create_notification(*, kind: str, severity: str, title: str, message: str) -> None:

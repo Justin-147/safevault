@@ -92,6 +92,88 @@ def test_nonzero_command_still_records_sandbox_metadata(sv_home, project) -> Non
     assert row["status"] == "command_failed"
 
 
+def test_ai_command_records_before_restore_point_and_session(
+    sv_home, project, tmp_path
+) -> None:
+    target = project / "ai.txt"
+    target.write_text("original", encoding="utf-8")
+    script = tmp_path / "codex.py"
+    script.write_text(
+        "from pathlib import Path\nPath('ai.txt').write_text('changed')\n",
+        encoding="utf-8",
+    )
+
+    sandbox_id, returncode, diff, _ = create_sandbox(project, [sys.executable, str(script)])
+
+    assert returncode == 0
+    assert diff.by_type("modified")
+    conn = connect()
+    try:
+        session = conn.execute(
+            "SELECT * FROM ai_change_sessions WHERE sandbox_id = ?", (sandbox_id,)
+        ).fetchone()
+        restore_point = conn.execute(
+            """
+            SELECT rp.*
+            FROM restore_points rp
+            JOIN snapshots s ON s.id = rp.snapshot_id
+            WHERE s.reason = 'before-ai-change'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+    assert session is not None
+    assert session["tool_name"] == "codex"
+    assert session["modified_count"] == 1
+    assert session["status"] == "sandbox_complete"
+    assert restore_point is not None
+    assert restore_point["important"] == 1
+
+
+def test_applying_ai_sandbox_records_after_restore_point(sv_home, project, tmp_path) -> None:
+    target = project / "apply-ai.txt"
+    target.write_text("before", encoding="utf-8")
+    script = tmp_path / "cursor.py"
+    script.write_text(
+        "from pathlib import Path\nPath('apply-ai.txt').write_text('after')\n",
+        encoding="utf-8",
+    )
+    sandbox_id, _, _, _ = create_sandbox(project, [sys.executable, str(script)])
+
+    from safevault.sandbox import apply_sandbox
+
+    result = apply_sandbox(sandbox_id)
+
+    assert result.applied == 1
+    assert target.read_text(encoding="utf-8") == "after"
+    conn = connect()
+    try:
+        reasons = [
+            str(row["reason"])
+            for row in conn.execute("SELECT reason FROM snapshots ORDER BY id").fetchall()
+        ]
+        session = conn.execute(
+            "SELECT * FROM ai_change_sessions WHERE sandbox_id = ?", (sandbox_id,)
+        ).fetchone()
+        after_point = conn.execute(
+            """
+            SELECT rp.*
+            FROM restore_points rp
+            JOIN snapshots s ON s.id = rp.snapshot_id
+            WHERE s.reason = 'after-ai-change'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+    assert "before-ai-change" in reasons
+    assert "after-ai-change" in reasons
+    assert session["tool_name"] == "cursor"
+    assert session["status"] == "applied"
+    assert session["after_snapshot_id"] is not None
+    assert after_point is not None
+    assert after_point["important"] == 1
+
+
 def test_sandboxes_json_output(runner, sv_home, project) -> None:
     sandbox_id, _, _, _ = create_sandbox(project, [sys.executable, "-c", "print('ok')"])
     from safevault.cli import app

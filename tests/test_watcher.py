@@ -76,6 +76,25 @@ def test_bulk_delete_warning_is_rate_limited(project) -> None:
     ]
 
 
+def test_large_change_batch_uses_large_change_snapshot_reason(project) -> None:
+    warnings = []
+    calls = []
+    handler = SafeVaultEventHandler(
+        project,
+        snapshot_func=lambda path, reason: calls.append((path, reason)) or 1,
+        warn_func=warnings.append,
+        bulk_change_threshold=2,
+    )
+
+    handler.note_event("modified", project / "a.txt", now=1.0)
+    handler.note_event("created", project / "b.txt", now=2.0)
+    handler.note_event("modified", project / "c.txt", now=3.0)
+    assert handler.flush(now=4.5)
+
+    assert warnings == ["High-risk warning: more than 2 file change events in 30 seconds"]
+    assert calls == [(project, "after-large-change")]
+
+
 def test_move_file_out_of_root_records_deleted_marker(project, tmp_path) -> None:
     deleted = []
     handler = SafeVaultEventHandler(
@@ -89,3 +108,18 @@ def test_move_file_out_of_root_records_deleted_marker(project, tmp_path) -> None
     handler.on_any_event(Event("moved", str(src), str(dest)))
 
     assert deleted == [(project, src)]
+
+
+def test_move_file_within_root_records_moved_callback(project) -> None:
+    moved = []
+    handler = SafeVaultEventHandler(
+        project,
+        snapshot_func=lambda path, reason: 1,
+        moved_func=lambda root, src, dest: moved.append((root, src, dest)),
+    )
+    src = project / "old.txt"
+    dest = project / "folder" / "new.txt"
+
+    handler.on_any_event(Event("moved", str(src), str(dest)))
+
+    assert moved == [(project, src, dest)]

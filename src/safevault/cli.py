@@ -63,7 +63,7 @@ from safevault.recent import (
     search_files,
 )
 from safevault.restore import restore_file
-from safevault.retention import build_retention_plan
+from safevault.retention import build_retention_plan, build_smart_retention_plan
 from safevault.sandbox import apply_sandbox, create_sandbox, list_sandboxes
 from safevault.snapshot import create_snapshot, relative_path
 from safevault.tray import run_tray
@@ -1123,9 +1123,10 @@ def ui_command(
 @handle_errors
 def retention_plan(
     keep_days: int = typer.Option(90, "--keep-days"),
+    smart: bool = typer.Option(False, "--smart"),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
-    result = build_retention_plan(keep_days=keep_days)
+    result = build_smart_retention_plan() if smart else build_retention_plan(keep_days=keep_days)
     console.print(f"Candidate versions: {len(result.candidate_versions)}")
     console.print(f"Candidate snapshots: {len(result.candidate_snapshots)}")
     if verbose:
@@ -1250,7 +1251,11 @@ def _plan_unprotect(conn, root_id: int, root_path: str) -> UnprotectPlan:
 
 def _execute_unprotect(conn, root_id: int) -> None:
     with conn:
+        conn.execute("DELETE FROM ai_change_sessions WHERE root_id = ?", (root_id,))
         conn.execute("DELETE FROM change_batches WHERE root_id = ?", (root_id,))
+        conn.execute("DELETE FROM file_events WHERE root_id = ?", (root_id,))
+        conn.execute("DELETE FROM version_timeline WHERE root_id = ?", (root_id,))
+        conn.execute("DELETE FROM restore_points WHERE root_id = ?", (root_id,))
         conn.execute("DELETE FROM protection_policies WHERE root_id = ?", (root_id,))
         conn.execute("DELETE FROM events WHERE root_id = ?", (root_id,))
         conn.execute(

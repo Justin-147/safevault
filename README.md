@@ -74,6 +74,10 @@ pip install -e .[dev,ui]
 
 SafeVault requires Python 3.12 and the `blake3` package.
 
+See [Install Guide](docs/INSTALL_EN.md), [User Guide](docs/USER_GUIDE_EN.md),
+[中文安装指南](docs/INSTALL_ZH.md), and [中文用户指南](docs/USER_GUIDE_ZH.md)
+for the continuous-protection workflow.
+
 ## Graphical UI
 
 ```bash
@@ -123,6 +127,18 @@ root but preserves existing snapshots and object-store content. Running
 `unprotect` only when you intentionally want to remove SafeVault metadata for a
 root.
 
+Continuous protection metadata is recorded alongside the existing snapshot
+model. SafeVault writes a file event journal, a version timeline, and restore
+points for completed snapshots, while file content remains stored in the
+BLAKE3-addressed object store.
+
+AI/Codex protection mode is automatic for sandboxed `codex` and `cursor`
+commands run through `safevault run`. SafeVault records a `before-ai-change`
+restore point before the AI command and an `after-ai-change` restore point after
+applying the sandbox, so the Recovery Home timeline can take users back to the
+state before the AI edit. The watcher also marks high-volume edit batches as
+`after-large-change` restore points.
+
 ## Daemon And Tray
 
 ```bash
@@ -139,7 +155,8 @@ The daemon is single-instance and writes heartbeat state to the vault database.
 On startup it scans enabled roots, then watches file changes. Created and
 modified files are debounced into snapshots. Deleted tracked files receive an
 immediate deleted marker so the Recovery Home can show them without waiting for
-a later manual snapshot. Bulk delete activity creates a warning notification.
+a later manual snapshot. Bulk delete and large change activity create warning
+notifications.
 
 The tray is optional and requires `pip install -e '.[tray]'`. It can open the
 local GUI, run snapshots, verify, trigger backup, pause protection for 30
@@ -152,6 +169,8 @@ The GUI home page is now a recovery-first page. After onboarding, it shows:
 - protected root count, daemon status, last snapshot, last backup, and health;
 - recent deleted files with one-click restore;
 - recent modified files;
+- a restore timeline built from file events, version history, and restore
+  points;
 - file search, including deleted-only search;
 - quick actions for adding folders, verify, backup, and export/import.
 
@@ -339,6 +358,7 @@ safevault export --output /tmp/safevault-export.tar.gz --gzip
 safevault import --input /tmp/safevault-export.tar.gz --target-home /tmp/safevault-restore --dry-run
 safevault import --input /tmp/safevault-export.tar.gz --target-home /tmp/safevault-restore --confirm
 safevault retention-plan --keep-days 90
+safevault retention-plan --smart
 ```
 
 `roots` lists registered protected roots. `status` shows root metadata, latest
@@ -356,7 +376,9 @@ schema, database integrity, object counts, referenced object presence, and objec
 hash contents. Import trusted archives into a fresh target home whenever
 possible; importing into the current live `SAFEVAULT_HOME` or inside it is
 rejected. `retention-plan` is non-destructive and reports old versions that a
-future retention policy could remove.
+future retention policy could remove. `retention-plan --smart` keeps
+high-frequency recent versions, hourly and daily recovery points, latest file
+versions, and important checkpoints.
 
 The GUI import form mirrors this safety model: it is checked as dry-run by
 default. A confirmed browser import requires unchecking dry-run and typing

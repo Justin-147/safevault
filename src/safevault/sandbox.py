@@ -8,8 +8,16 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
+from safevault.ai_protection import detect_ai_tool
 from safevault.atomic import atomic_copy_file, atomic_write_bytes
-from safevault.db import connect, get_or_create_root, utc_now_iso
+from safevault.db import (
+    complete_ai_change_session,
+    connect,
+    get_ai_change_session,
+    get_or_create_root,
+    insert_ai_change_session,
+    utc_now_iso,
+)
 from safevault.diffing import diff_dirs
 from safevault.errors import SafeVaultError, SandboxNotFoundError, UnsafeOperationError
 from safevault.filetypes import SafeFileKind, classify_no_follow
@@ -147,7 +155,10 @@ def create_sandbox(project: Path, command: list[str]) -> tuple[str, int, DiffRes
     finally:
         conn.close()
 
-    create_snapshot(project, reason="pre-run")
+    ai_tool = detect_ai_tool(command)
+    before_snapshot_id = create_snapshot(
+        project, reason="before-ai-change" if ai_tool is not None else "pre-run"
+    )
     sandbox_id = _sandbox_id()
     sandbox_dir = get_sandboxes_dir() / sandbox_id
     sandbox_work = sandbox_dir / "work"
@@ -162,6 +173,27 @@ def create_sandbox(project: Path, command: list[str]) -> tuple[str, int, DiffRes
     diff_path = sandbox_dir / "diff.json"
     atomic_write_bytes(diff_path, json.dumps(diff.to_dict(), indent=2).encode("utf-8"))
     update_sandbox_status(sandbox_id, "complete" if completed.returncode == 0 else "command_failed")
+    if ai_tool is not None:
+        counts = diff.counts()
+        conn = connect()
+        try:
+            insert_ai_change_session(
+                conn,
+                root_id=root_id,
+                sandbox_id=sandbox_id,
+                tool_name=ai_tool,
+                command=json.dumps(command, ensure_ascii=False),
+                before_snapshot_id=before_snapshot_id,
+                status="sandbox_complete"
+                if completed.returncode == 0
+                else "command_failed",
+                created_count=counts.get("created", 0),
+                modified_count=counts.get("modified", 0),
+                deleted_count=counts.get("deleted", 0),
+            )
+            conn.commit()
+        finally:
+            conn.close()
     return sandbox_id, completed.returncode, diff, diff_path
 
 
@@ -273,6 +305,12 @@ def apply_sandbox(
         raise SafeVaultError(f"sandbox work directory missing: {sandbox_work}")
 
     diff = _load_diff(sandbox)
+    conn = connect()
+    try:
+        ai_session = get_ai_change_session(conn, sandbox_id)
+    finally:
+        conn.close()
+    is_ai_change = ai_session is not None
     applied = 0
     deleted = 0
     skipped_deletions: list[str] = []
@@ -280,8 +318,12 @@ def apply_sandbox(
     unsafe: list[str] = []
     missing_sources: list[str] = []
     try:
+        after_snapshot_id: int | None = None
         if not dry_run:
-            create_snapshot(original, reason="pre-apply")
+            create_snapshot(
+                original,
+                reason="before-ai-change" if is_ai_change else "pre-apply",
+            )
         for entry in diff.entries:
             try:
                 _validate_diff_entry(entry)
@@ -402,8 +444,23 @@ def apply_sandbox(
         )
         if not dry_run:
             if applied or deleted:
-                create_snapshot(original, reason="post-apply")
+                after_snapshot_id = create_snapshot(
+                    original,
+                    reason="after-ai-change" if is_ai_change else "post-apply",
+                )
             status = "partially_applied" if result.has_skips else "applied"
+            if is_ai_change:
+                conn = connect()
+                try:
+                    complete_ai_change_session(
+                        conn,
+                        sandbox_id=sandbox_id,
+                        after_snapshot_id=after_snapshot_id,
+                        status=status,
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
             update_sandbox_status(sandbox_id, status)
         return result
     except Exception:

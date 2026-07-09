@@ -72,6 +72,17 @@ def test_unprotect_confirm_removes_metadata_but_keeps_objects(runner, sv_home, p
     result = runner.invoke(app, ["status", str(project)])
     assert result.exit_code != 0
     assert "protected root" in result.output
+    conn = connect()
+    try:
+        for table in (
+            "file_events",
+            "version_timeline",
+            "restore_points",
+            "ai_change_sessions",
+        ):
+            assert int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]) == 0
+    finally:
+        conn.close()
 
 
 def test_unprotect_dry_run_json(runner, sv_home, project) -> None:

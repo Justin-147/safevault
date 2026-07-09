@@ -7,7 +7,14 @@ from pathlib import Path
 from typing import Literal
 
 from safevault import object_store
-from safevault.db import connect, utc_now_iso
+from safevault.ai_protection import is_ai_snapshot_reason
+from safevault.db import (
+    connect,
+    insert_file_event,
+    insert_restore_point,
+    insert_version_timeline,
+    utc_now_iso,
+)
 from safevault.errors import SafeVaultError
 from safevault.ignore import build_pathspec, is_ignored
 from safevault.paths import ensure_home_layout
@@ -75,13 +82,27 @@ def _insert_event(
     rel_path: str,
     source: str = "snapshot",
     old_rel_path: str | None = None,
+    file_id: int | None = None,
+    snapshot_id: int | None = None,
 ) -> None:
+    detected_at = utc_now_iso()
     conn.execute(
         """
         INSERT INTO events(root_id, event_type, rel_path, old_rel_path, detected_at, source)
         VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (root_id, event_type, rel_path, old_rel_path, utc_now_iso(), source),
+        (root_id, event_type, rel_path, old_rel_path, detected_at, source),
+    )
+    insert_file_event(
+        conn,
+        root_id=root_id,
+        file_id=file_id,
+        snapshot_id=snapshot_id,
+        event_type=event_type,
+        rel_path=rel_path,
+        old_rel_path=old_rel_path,
+        detected_at=detected_at,
+        source=source,
     )
 
 
@@ -134,6 +155,7 @@ def _upsert_file(
 def _insert_version(
     conn: sqlite3.Connection,
     *,
+    root_id: int,
     file_id: int,
     snapshot_id: int,
     rel_path: str,
@@ -141,9 +163,11 @@ def _insert_version(
     size: int | None,
     mtime_ns: int | None,
     mode: int | None,
+    event_type: str,
     is_deleted_marker: int = 0,
-) -> None:
-    conn.execute(
+) -> int:
+    captured_at = utc_now_iso()
+    cur = conn.execute(
         """
         INSERT INTO versions(
             file_id, snapshot_id, rel_path, content_hash, size, mtime_ns, mode,
@@ -159,10 +183,23 @@ def _insert_version(
             size,
             mtime_ns,
             mode,
-            utc_now_iso(),
+            captured_at,
             is_deleted_marker,
         ),
     )
+    assert cur.lastrowid is not None
+    version_id = int(cur.lastrowid)
+    insert_version_timeline(
+        conn,
+        root_id=root_id,
+        file_id=file_id,
+        version_id=version_id,
+        snapshot_id=snapshot_id,
+        rel_path=rel_path,
+        event_type=event_type,
+        occurred_at=captured_at,
+    )
+    return version_id
 
 
 def _symlink_payload(path: Path) -> bytes:
@@ -326,8 +363,17 @@ def create_snapshot(path: Path, reason: str = "manual", profile: str = "coding")
             ):
                 should_version = False
             if should_version:
+                if existing is None:
+                    event_type = "created"
+                elif existing["status"] == "deleted":
+                    event_type = "restored"
+                elif existing["current_hash"] != captured.content_hash:
+                    event_type = "modified"
+                else:
+                    event_type = "version"
                 _insert_version(
                     conn,
+                    root_id=root_id,
                     file_id=file_id,
                     snapshot_id=snapshot_id,
                     rel_path=rel_path,
@@ -335,13 +381,35 @@ def create_snapshot(path: Path, reason: str = "manual", profile: str = "coding")
                     size=captured.size,
                     mtime_ns=captured.mtime_ns,
                     mode=captured.mode,
+                    event_type=event_type,
                 )
                 if existing is None:
-                    _insert_event(conn, root_id, "created", rel_path)
+                    _insert_event(
+                        conn,
+                        root_id,
+                        "created",
+                        rel_path,
+                        file_id=file_id,
+                        snapshot_id=snapshot_id,
+                    )
                 elif existing["status"] == "deleted":
-                    _insert_event(conn, root_id, "restored", rel_path)
+                    _insert_event(
+                        conn,
+                        root_id,
+                        "restored",
+                        rel_path,
+                        file_id=file_id,
+                        snapshot_id=snapshot_id,
+                    )
                 elif existing["current_hash"] != captured.content_hash:
-                    _insert_event(conn, root_id, "modified", rel_path)
+                    _insert_event(
+                        conn,
+                        root_id,
+                        "modified",
+                        rel_path,
+                        file_id=file_id,
+                        snapshot_id=snapshot_id,
+                    )
 
         active_rows = conn.execute(
             "SELECT * FROM files WHERE root_id = ? AND status = 'active'", (root_id,)
@@ -356,6 +424,7 @@ def create_snapshot(path: Path, reason: str = "manual", profile: str = "coding")
             )
             _insert_version(
                 conn,
+                root_id=root_id,
                 file_id=int(row["id"]),
                 snapshot_id=snapshot_id,
                 rel_path=rel_path,
@@ -363,13 +432,35 @@ def create_snapshot(path: Path, reason: str = "manual", profile: str = "coding")
                 size=row["size"],
                 mtime_ns=row["mtime_ns"],
                 mode=row["mode"],
+                event_type="deleted",
                 is_deleted_marker=1,
             )
-            _insert_event(conn, root_id, "deleted", rel_path)
+            _insert_event(
+                conn,
+                root_id,
+                "deleted",
+                rel_path,
+                file_id=int(row["id"]),
+                snapshot_id=snapshot_id,
+            )
 
+        finished_at = utc_now_iso()
         conn.execute(
             "UPDATE snapshots SET status = 'complete', finished_at = ? WHERE id = ?",
-            (utc_now_iso(), snapshot_id),
+            (finished_at, snapshot_id),
+        )
+        insert_restore_point(
+            conn,
+            root_id=root_id,
+            snapshot_id=snapshot_id,
+            reason=reason,
+            created_at=finished_at,
+            source=reason,
+            important=(
+                "checkpoint" in reason
+                or reason.startswith("before-")
+                or is_ai_snapshot_reason(reason)
+            ),
         )
         conn.commit()
         return snapshot_id

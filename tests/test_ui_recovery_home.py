@@ -41,6 +41,23 @@ def test_recovery_home_shows_recent_deleted_and_modified(
     assert "CONFIRM" in response.text
 
 
+def test_recovery_home_shows_version_timeline(sv_home: Path, project: Path) -> None:
+    _complete_onboarding_config()
+    target = project / "timeline-home.txt"
+    target.write_text("first", encoding="utf-8")
+    create_snapshot(project)
+    target.write_text("second", encoding="utf-8")
+    create_snapshot(project)
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        response = client.get("/", params={"token": TOKEN})
+
+    assert response.status_code == 200
+    assert "恢复时间线" in response.text
+    assert "timeline-home.txt" in response.text
+    assert "Modified timeline-home.txt" in response.text
+
+
 def test_recovery_home_searches_files(sv_home: Path, project: Path) -> None:
     _complete_onboarding_config()
     (project / "search-home.txt").write_text("tracked", encoding="utf-8")

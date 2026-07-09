@@ -8,7 +8,7 @@ from safevault.errors import SafeVaultError
 from safevault.models import ProtectionPolicy, Root
 from safevault.paths import ensure_home_layout, get_db_path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 
 
 def utc_now_iso() -> str:
@@ -158,6 +158,14 @@ def migrate(conn: sqlite3.Connection) -> None:
     if version < 3:
         migrate_to_v3(conn)
         set_user_version(conn, 3)
+        version = 3
+    if version < 4:
+        migrate_to_v4(conn)
+        set_user_version(conn, 4)
+        version = 4
+    if version < 5:
+        migrate_to_v5(conn)
+        set_user_version(conn, 5)
 
 
 def ensure_migrations_table(conn: sqlite3.Connection) -> None:
@@ -277,6 +285,355 @@ def migrate_to_v3(conn: sqlite3.Connection) -> None:
     if "stopped_at" not in columns:
         conn.execute("ALTER TABLE daemon_state ADD COLUMN stopped_at TEXT")
     record_migration(conn, 3)
+
+
+def migrate_to_v4(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS file_events (
+            id INTEGER PRIMARY KEY,
+            root_id INTEGER NOT NULL,
+            file_id INTEGER,
+            snapshot_id INTEGER,
+            event_type TEXT NOT NULL,
+            rel_path TEXT NOT NULL,
+            old_rel_path TEXT,
+            detected_at TEXT NOT NULL,
+            source TEXT NOT NULL,
+            details TEXT,
+            FOREIGN KEY(root_id) REFERENCES roots(id),
+            FOREIGN KEY(file_id) REFERENCES files(id),
+            FOREIGN KEY(snapshot_id) REFERENCES snapshots(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_file_events_root_time
+            ON file_events(root_id, detected_at);
+        CREATE INDEX IF NOT EXISTS idx_file_events_path_time
+            ON file_events(root_id, rel_path, detected_at);
+
+        CREATE TABLE IF NOT EXISTS version_timeline (
+            id INTEGER PRIMARY KEY,
+            root_id INTEGER NOT NULL,
+            file_id INTEGER NOT NULL,
+            version_id INTEGER NOT NULL,
+            snapshot_id INTEGER NOT NULL,
+            rel_path TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            occurred_at TEXT NOT NULL,
+            FOREIGN KEY(root_id) REFERENCES roots(id),
+            FOREIGN KEY(file_id) REFERENCES files(id),
+            FOREIGN KEY(version_id) REFERENCES versions(id),
+            FOREIGN KEY(snapshot_id) REFERENCES snapshots(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_version_timeline_root_time
+            ON version_timeline(root_id, occurred_at);
+        CREATE INDEX IF NOT EXISTS idx_version_timeline_path_time
+            ON version_timeline(root_id, rel_path, occurred_at);
+
+        CREATE TABLE IF NOT EXISTS restore_points (
+            id INTEGER PRIMARY KEY,
+            root_id INTEGER NOT NULL,
+            snapshot_id INTEGER NOT NULL UNIQUE,
+            label TEXT,
+            reason TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            source TEXT NOT NULL,
+            important INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY(root_id) REFERENCES roots(id),
+            FOREIGN KEY(snapshot_id) REFERENCES snapshots(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_restore_points_root_time
+            ON restore_points(root_id, created_at);
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO file_events(
+            root_id, file_id, snapshot_id, event_type, rel_path, old_rel_path,
+            detected_at, source, details
+        )
+        SELECT
+            e.root_id,
+            f.id,
+            NULL,
+            e.event_type,
+            e.rel_path,
+            e.old_rel_path,
+            e.detected_at,
+            e.source,
+            NULL
+        FROM events e
+        LEFT JOIN files f ON f.root_id = e.root_id AND f.rel_path = e.rel_path
+        WHERE NOT EXISTS (
+            SELECT 1 FROM file_events fe
+            WHERE fe.root_id = e.root_id
+              AND fe.event_type = e.event_type
+              AND fe.rel_path = e.rel_path
+              AND fe.detected_at = e.detected_at
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO version_timeline(
+            root_id, file_id, version_id, snapshot_id, rel_path, event_type,
+            title, occurred_at
+        )
+        SELECT
+            f.root_id,
+            v.file_id,
+            v.id,
+            v.snapshot_id,
+            v.rel_path,
+            CASE WHEN v.is_deleted_marker = 1 THEN 'deleted' ELSE 'version' END,
+            CASE WHEN v.is_deleted_marker = 1
+                 THEN 'Deleted ' || v.rel_path
+                 ELSE 'Saved ' || v.rel_path
+            END,
+            v.captured_at
+        FROM versions v
+        JOIN files f ON f.id = v.file_id
+        WHERE NOT EXISTS (
+            SELECT 1 FROM version_timeline vt WHERE vt.version_id = v.id
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO restore_points(
+            root_id, snapshot_id, label, reason, created_at, source, important
+        )
+        SELECT
+            root_id,
+            id,
+            label,
+            reason,
+            COALESCE(finished_at, started_at),
+            reason,
+            CASE
+                WHEN reason LIKE '%checkpoint%' OR label IS NOT NULL THEN 1
+                ELSE 0
+            END
+        FROM snapshots
+        WHERE status = 'complete'
+          AND NOT EXISTS (
+              SELECT 1 FROM restore_points rp WHERE rp.snapshot_id = snapshots.id
+          )
+        """
+    )
+    record_migration(conn, 4)
+
+
+def migrate_to_v5(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS ai_change_sessions (
+            id INTEGER PRIMARY KEY,
+            root_id INTEGER NOT NULL,
+            sandbox_id TEXT,
+            tool_name TEXT NOT NULL,
+            command TEXT NOT NULL,
+            before_snapshot_id INTEGER,
+            after_snapshot_id INTEGER,
+            created_at TEXT NOT NULL,
+            completed_at TEXT,
+            status TEXT NOT NULL,
+            created_count INTEGER NOT NULL DEFAULT 0,
+            modified_count INTEGER NOT NULL DEFAULT 0,
+            deleted_count INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY(root_id) REFERENCES roots(id),
+            FOREIGN KEY(sandbox_id) REFERENCES sandboxes(id),
+            FOREIGN KEY(before_snapshot_id) REFERENCES snapshots(id),
+            FOREIGN KEY(after_snapshot_id) REFERENCES snapshots(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ai_change_sessions_root_time
+            ON ai_change_sessions(root_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_ai_change_sessions_sandbox
+            ON ai_change_sessions(sandbox_id);
+        """
+    )
+    record_migration(conn, 5)
+
+
+def insert_ai_change_session(
+    conn: sqlite3.Connection,
+    *,
+    root_id: int,
+    sandbox_id: str,
+    tool_name: str,
+    command: str,
+    before_snapshot_id: int | None,
+    status: str,
+    created_count: int,
+    modified_count: int,
+    deleted_count: int,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO ai_change_sessions(
+            root_id, sandbox_id, tool_name, command, before_snapshot_id,
+            after_snapshot_id, created_at, completed_at, status,
+            created_count, modified_count, deleted_count
+        )
+        VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?, ?)
+        """,
+        (
+            root_id,
+            sandbox_id,
+            tool_name,
+            command,
+            before_snapshot_id,
+            utc_now_iso(),
+            status,
+            created_count,
+            modified_count,
+            deleted_count,
+        ),
+    )
+
+
+def get_ai_change_session(
+    conn: sqlite3.Connection, sandbox_id: str
+) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT * FROM ai_change_sessions
+        WHERE sandbox_id = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (sandbox_id,),
+    ).fetchone()
+
+
+def complete_ai_change_session(
+    conn: sqlite3.Connection,
+    *,
+    sandbox_id: str,
+    after_snapshot_id: int | None,
+    status: str,
+) -> None:
+    conn.execute(
+        """
+        UPDATE ai_change_sessions
+        SET after_snapshot_id = ?, completed_at = ?, status = ?
+        WHERE sandbox_id = ?
+        """,
+        (after_snapshot_id, utc_now_iso(), status, sandbox_id),
+    )
+
+
+def insert_file_event(
+    conn: sqlite3.Connection,
+    *,
+    root_id: int,
+    event_type: str,
+    rel_path: str,
+    source: str,
+    old_rel_path: str | None = None,
+    file_id: int | None = None,
+    snapshot_id: int | None = None,
+    detected_at: str | None = None,
+    details: str | None = None,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO file_events(
+            root_id, file_id, snapshot_id, event_type, rel_path, old_rel_path,
+            detected_at, source, details
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            root_id,
+            file_id,
+            snapshot_id,
+            event_type,
+            rel_path,
+            old_rel_path,
+            detected_at or utc_now_iso(),
+            source,
+            details,
+        ),
+    )
+
+
+def insert_version_timeline(
+    conn: sqlite3.Connection,
+    *,
+    root_id: int,
+    file_id: int,
+    version_id: int,
+    snapshot_id: int,
+    rel_path: str,
+    event_type: str,
+    occurred_at: str | None = None,
+) -> None:
+    title = _timeline_title(event_type, rel_path)
+    conn.execute(
+        """
+        INSERT INTO version_timeline(
+            root_id, file_id, version_id, snapshot_id, rel_path, event_type,
+            title, occurred_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            root_id,
+            file_id,
+            version_id,
+            snapshot_id,
+            rel_path,
+            event_type,
+            title,
+            occurred_at or utc_now_iso(),
+        ),
+    )
+
+
+def insert_restore_point(
+    conn: sqlite3.Connection,
+    *,
+    root_id: int,
+    snapshot_id: int,
+    reason: str,
+    label: str | None = None,
+    created_at: str | None = None,
+    source: str | None = None,
+    important: bool = False,
+) -> None:
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO restore_points(
+            root_id, snapshot_id, label, reason, created_at, source, important
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            root_id,
+            snapshot_id,
+            label,
+            reason,
+            created_at or utc_now_iso(),
+            source or reason,
+            1 if important else 0,
+        ),
+    )
+
+
+def _timeline_title(event_type: str, rel_path: str) -> str:
+    labels = {
+        "created": "Created",
+        "modified": "Modified",
+        "deleted": "Deleted",
+        "restored": "Restored",
+        "version": "Saved",
+    }
+    return f"{labels.get(event_type, event_type.title())} {rel_path}"
 
 
 def _root_from_row(row: sqlite3.Row | None) -> Root | None:

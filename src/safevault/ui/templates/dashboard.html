@@ -57,6 +57,22 @@
     </section>
 
     <section class="panel">
+      <h2>恢复时间线</h2>
+      <table>
+        <tr><th>Time</th><th>Change</th><th>Path</th></tr>
+        {% for item in timeline %}
+        <tr>
+          <td>{{ item.occurred_at }}</td>
+          <td>{{ item.title }}</td>
+          <td>{{ item.rel_path }}<br><small>{{ item.root_path }}</small></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3">No timeline entries yet.</td></tr>
+        {% endfor %}
+      </table>
+    </section>
+
+    <section class="panel">
       <h2>搜索文件</h2>
       <form method="get" action="/">
         <input name="q" value="{{ search_query }}" placeholder="file name or path">

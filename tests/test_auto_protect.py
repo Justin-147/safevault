@@ -26,7 +26,7 @@ def test_schema_migration_adds_auto_protection_tables(sv_home) -> None:
     finally:
         conn.close()
 
-    assert version == 3
+    assert version == 5
     assert {
         "schema_migrations",
         "protection_policies",
@@ -34,8 +34,12 @@ def test_schema_migration_adds_auto_protection_tables(sv_home) -> None:
         "change_batches",
         "backup_jobs",
         "notifications",
+        "file_events",
+        "version_timeline",
+        "restore_points",
+        "ai_change_sessions",
     } <= tables
-    assert {2, 3} <= migrations
+    assert {2, 3, 4, 5} <= migrations
 
 
 def test_config_round_trips_extended_settings(sv_home, tmp_path: Path) -> None:
