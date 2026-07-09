@@ -21,6 +21,19 @@ powershell -ExecutionPolicy Bypass -File scripts\install_windows_user.ps1 -WithT
 脚本内部调用 `safevault daemon install`，只写入当前用户 Startup 文件夹。
 它不会删除文件，不会创建系统级服务，也不会改变 SafeVault 的 CLI 安全确认。
 
+## 构建 SafeVaultSetup.exe
+
+发布构建者可以用 PyInstaller 和 Inno Setup 生成一键 Windows 安装器：
+
+```powershell
+python -m pip install -e '.[installer,ui,tray]'
+powershell -ExecutionPolicy Bypass -File scripts\build_windows_installer.ps1
+```
+
+安装器定义在 `packaging/windows/SafeVaultSetup.iss`，输出
+`dist/SafeVaultSetup.exe`。安装器默认注册当前用户的 daemon 开机启动项，
+可选注册 tray，并在安装完成后打开首次启动向导。
+
 ## 第一次启动
 
 ```bash

@@ -3,6 +3,9 @@
 ## Unreleased
 
 Added:
+- Windows productization assets: a shared startup integration module, first-run
+  startup choice, and Inno Setup packaging script for building
+  `SafeVaultSetup.exe`.
 - Continuous protection metadata tables for file events, version timeline
   entries, and restore points while keeping the existing BLAKE3 object store and
   SQLite snapshot/version model.

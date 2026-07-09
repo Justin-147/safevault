@@ -37,6 +37,9 @@ tray = [
   "pystray>=0.19",
   "pillow>=10.0",
 ]
+installer = [
+  "pyinstaller>=6.0",
+]
 
 [project.scripts]
 safevault = "safevault.cli:app"

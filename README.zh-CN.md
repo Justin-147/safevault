@@ -50,6 +50,9 @@ pip install -e .[dev,ui]
 [中文用户指南](docs/USER_GUIDE_ZH.md)、[Install Guide](docs/INSTALL_EN.md) 和
 [User Guide](docs/USER_GUIDE_EN.md)。
 
+Windows 发布构建者可以使用 `scripts/build_windows_installer.ps1` 和 Inno Setup
+生成 `dist/SafeVaultSetup.exe`。
+
 ## 4. 快速开始
 
 ```bash

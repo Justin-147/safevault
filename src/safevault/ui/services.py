@@ -36,6 +36,7 @@ from safevault.restore import restore_file
 from safevault.retention import RetentionPlan, build_retention_plan
 from safevault.sandbox import apply_sandbox, get_sandbox, list_sandboxes
 from safevault.snapshot import create_snapshot
+from safevault.startup import install_user_startup
 from safevault.ui.schemas import (
     DashboardStatus,
     DeletedEntry,
@@ -190,6 +191,7 @@ def complete_onboarding_from_ui(
     roots: list[str],
     backup_target: str,
     backup_schedule: str,
+    startup_enabled: bool = False,
     skip_roots: bool = False,
 ) -> dict[str, list[int]]:
     created_roots: list[int] = []
@@ -216,6 +218,8 @@ def complete_onboarding_from_ui(
         snapshots.append(create_snapshot(root_path, reason="onboarding-initial"))
     if backup_target.strip():
         configure_backup(Path(backup_target), _backup_schedule_for_ui(backup_schedule))
+    if startup_enabled:
+        install_user_startup(daemon=True, tray=False)
     config = load_config()
     save_config(replace(config, app=replace(config.app, onboarding_completed=True)))
     return {"roots": created_roots, "snapshots": snapshots}

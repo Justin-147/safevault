@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import json
-import os
 import secrets
 import shutil
-import sys
 import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -66,6 +64,7 @@ from safevault.restore import restore_file
 from safevault.retention import build_retention_plan, build_smart_retention_plan
 from safevault.sandbox import apply_sandbox, create_sandbox, list_sandboxes
 from safevault.snapshot import create_snapshot, relative_path
+from safevault.startup import install_user_startup, uninstall_user_startup
 from safevault.tray import run_tray
 from safevault.verify import run_verify
 from safevault.watcher import watch_roots
@@ -288,25 +287,16 @@ def daemon_stop() -> None:
 @daemon_app.command(name="install")
 @handle_errors
 def daemon_install() -> None:
-    if os.name != "nt":
-        raise SafeVaultError("daemon install currently supports Windows Startup only")
-    startup = _windows_startup_dir()
-    startup.mkdir(parents=True, exist_ok=True)
-    script = startup / "SafeVault Daemon.cmd"
-    command = f'@echo off\r\n"{sys.executable}" -m safevault daemon run\r\n'
-    script.write_text(command, encoding="utf-8")
-    console.print(f"Installed SafeVault daemon startup item: {script}")
+    result = install_user_startup(daemon=True, tray=False)
+    console.print(f"Installed SafeVault daemon startup item: {result.daemon_entry}")
 
 
 @daemon_app.command(name="uninstall")
 @handle_errors
 def daemon_uninstall() -> None:
-    if os.name != "nt":
-        raise SafeVaultError("daemon uninstall currently supports Windows Startup only")
-    script = _windows_startup_dir() / "SafeVault Daemon.cmd"
-    if script.exists():
-        script.unlink()
-        console.print(f"Removed SafeVault daemon startup item: {script}")
+    result = uninstall_user_startup(daemon=True, tray=False)
+    if result.daemon_changed:
+        console.print(f"Removed SafeVault daemon startup item: {result.daemon_entry}")
     else:
         console.print("SafeVault daemon startup item was not installed")
 
@@ -1177,20 +1167,6 @@ def _print_recent_table(entries: list[RecentEntry], *, include_event: bool) -> N
         )
         table.add_row(*values)
     console.print(table)
-
-
-def _windows_startup_dir() -> Path:
-    appdata = os.environ.get("APPDATA")
-    if not appdata:
-        raise SafeVaultError("APPDATA is not set; cannot locate Windows Startup folder")
-    return (
-        Path(appdata)
-        / "Microsoft"
-        / "Windows"
-        / "Start Menu"
-        / "Programs"
-        / "Startup"
-    )
 
 
 def _object_store_size() -> int:

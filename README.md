@@ -78,6 +78,9 @@ See [Install Guide](docs/INSTALL_EN.md), [User Guide](docs/USER_GUIDE_EN.md),
 [中文安装指南](docs/INSTALL_ZH.md), and [中文用户指南](docs/USER_GUIDE_ZH.md)
 for the continuous-protection workflow.
 
+Windows release builders can use `scripts/build_windows_installer.ps1` with
+Inno Setup to produce `dist/SafeVaultSetup.exe`.
+
 ## Graphical UI
 
 ```bash

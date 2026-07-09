@@ -18,6 +18,7 @@ def test_first_open_shows_onboarding(sv_home: Path) -> None:
 
     assert response.status_code == 200
     assert "首次启动向导" in response.text
+    assert "Start SafeVault automatically with Windows" in response.text
 
 
 def test_onboarding_completion_writes_config_and_initial_snapshot(
@@ -74,6 +75,31 @@ def test_onboarding_can_configure_backup(sv_home: Path, tmp_path: Path) -> None:
     assert config.backup.enabled is True
     assert config.backup.schedule == "weekly"
     assert config.backup.target == str(backup_target.resolve(strict=False))
+
+
+def test_onboarding_startup_option_installs_daemon_startup(
+    sv_home: Path, monkeypatch
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        "safevault.ui.services.install_user_startup",
+        lambda *, daemon, tray: calls.append((daemon, tray)),
+    )
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        response = client.post(
+            "/onboarding",
+            data={
+                "backup_schedule": "manual",
+                "skip_roots": "true",
+                "startup_enabled": "true",
+            },
+        )
+
+    assert response.status_code == 200
+    assert load_config().app.onboarding_completed is True
+    assert calls == [(True, False)]
 
 
 def test_onboarding_requires_root_or_explicit_skip(sv_home: Path) -> None:

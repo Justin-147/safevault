@@ -29,8 +29,14 @@
     <option value="manual">manual</option>
   </select>
 
+  <h2>开机启动</h2>
+  <label>
+    <input type="checkbox" name="startup_enabled" value="true" checked>
+    Start SafeVault automatically with Windows
+  </label>
+
   <h2>安全说明</h2>
-  <p class="warning">SafeVault 不做裸盘恢复，不绕过权限，不自动删除用户文件。恢复和导入覆盖仍会走显式确认。</p>
+  <p class="warning">SafeVault 不做裸盘恢复，不绕过权限，不自动删除用户文件。恢复、导入和覆盖仍会要求显式确认。</p>
   <button type="submit">Complete setup</button>
 </form>
 {% endblock %}

@@ -22,6 +22,21 @@ The helper calls `safevault daemon install`, which writes a Startup-folder
 command for the current Windows user. It does not install a kernel driver,
 service account, browser extension, or remote access endpoint.
 
+## Build SafeVaultSetup.exe
+
+Release builders can create a one-click Windows installer with PyInstaller and
+Inno Setup:
+
+```powershell
+python -m pip install -e '.[installer,ui,tray]'
+powershell -ExecutionPolicy Bypass -File scripts\build_windows_installer.ps1
+```
+
+The installer definition is `packaging/windows/SafeVaultSetup.iss` and produces
+`dist/SafeVaultSetup.exe`. The installer registers current-user Startup entries
+for the daemon by default, offers optional tray startup, and launches the
+first-run wizard after install.
+
 ## First Run
 
 Open the local GUI:

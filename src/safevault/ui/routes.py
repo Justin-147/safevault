@@ -91,6 +91,7 @@ def build_router() -> APIRouter:
         request: Request,
         backup_target: str = Form(""),
         backup_schedule: str = Form("daily"),
+        startup_enabled: bool = Form(False),
         skip_roots: bool = Form(False),
         token: str = Depends(require_token),
     ) -> HTMLResponse:
@@ -103,6 +104,7 @@ def build_router() -> APIRouter:
                 roots=roots,
                 backup_target=backup_target,
                 backup_schedule=backup_schedule,
+                startup_enabled=startup_enabled,
                 skip_roots=skip_roots,
             )
             message = (
