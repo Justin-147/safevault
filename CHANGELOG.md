@@ -14,6 +14,9 @@ Added:
 - Smart retention planning that balances high-frequency recent versions,
   hourly/daily recovery points, latest file versions, and important checkpoints
   without deleting data automatically.
+- `safevault.retention_engine` adds dry-run smart cleanup estimates, including
+  reclaimable object bytes without counting objects still referenced by protected
+  or important versions.
 - Recovery Home now shows a restore timeline backed by continuous protection
   metadata, so users can browse recent file changes alongside deleted and
   modified file lists.

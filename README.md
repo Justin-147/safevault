@@ -382,7 +382,8 @@ possible; importing into the current live `SAFEVAULT_HOME` or inside it is
 rejected. `retention-plan` is non-destructive and reports old versions that a
 future retention policy could remove. `retention-plan --smart` keeps
 high-frequency recent versions, hourly and daily recovery points, latest file
-versions, and important checkpoints.
+versions, and important checkpoints. `safevault.retention_engine` adds dry-run
+storage estimation for release and GUI flows without deleting data.
 
 The GUI import form mirrors this safety model: it is checked as dry-run by
 default. A confirmed browser import requires unchecking dry-run and typing

@@ -113,6 +113,7 @@ safevault search report --deleted
 watcher 触发的自动保存会变成普通可恢复版本，用户不需要管理 snapshot 编号。
 `safevault retention-plan --smart` 会生成非破坏性的智能保留计划，用于平衡
 最近高频版本、小时/天级恢复点、最新版本和重要 checkpoint。
+`safevault.retention_engine` 会做 dry-run 空间估算，但不会删除数据。
 
 AI/Codex 保护模式会自动识别通过 `safevault run` 启动的 `codex` 和 `cursor`
 命令：AI 修改前记录 `before-ai-change` 恢复点，sandbox apply 后记录
