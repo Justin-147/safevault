@@ -36,6 +36,9 @@ Added:
 - Documentation now includes a `docs/README.md` index and expanded English and
   Chinese user guides covering startup, folder protection, restore, pause,
   disable, backup, limitations, AI rollback, and mass-change recovery.
+- Release acceptance documentation and tests now cover the v1 productization
+  pillars across installation, protection, recovery, AI/mass-change handling,
+  retention, and validation commands.
 
 ## 0.2.0rc1
 

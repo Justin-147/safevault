@@ -14,6 +14,7 @@ Topic guides:
 - [中文自动保护模式](zh/auto-protection.md)
 - [中文守护进程和托盘](zh/daemon-tray.md)
 - [中文安全模型](zh/SAFETY_MODEL.md)
+- [v1 Productization Acceptance](releases/v1-productization-acceptance.md)
 
 SafeVault is local-only. It is not raw disk recovery, not malware containment,
 and not a replacement for off-machine backups.
