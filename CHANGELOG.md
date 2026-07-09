@@ -9,6 +9,8 @@ Added:
 - Continuous protection metadata tables for file events, version timeline
   entries, and restore points while keeping the existing BLAKE3 object store and
   SQLite snapshot/version model.
+- Continuous protection tests now cover watcher-triggered automatic save points
+  becoming regular recoverable versions.
 - Smart retention planning that balances high-frequency recent versions,
   hourly/daily recovery points, latest file versions, and important checkpoints
   without deleting data automatically.

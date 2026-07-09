@@ -5,6 +5,7 @@ from pathlib import Path
 from safevault.daemon import record_moved_event
 from safevault.db import connect
 from safevault.snapshot import create_snapshot
+from safevault.watcher import SafeVaultEventHandler
 
 
 def _rows(table: str):
@@ -57,3 +58,25 @@ def test_moved_event_records_old_and_new_path(sv_home: Path, project: Path) -> N
     assert moved
     assert moved[-1]["old_rel_path"] == "old.txt"
     assert moved[-1]["rel_path"] == "new.txt"
+
+
+def test_file_change_can_create_automatic_version_and_restore_point(
+    sv_home: Path, project: Path
+) -> None:
+    target = project / "auto-save.txt"
+    target.write_text("tracked", encoding="utf-8")
+    handler = SafeVaultEventHandler(
+        project,
+        snapshot_func=lambda root, _reason: create_snapshot(root, reason="automatic-save"),
+    )
+
+    handler.note_event("created", target, now=1.0)
+
+    assert handler.flush(now=2.1) is True
+    events = _rows("file_events")
+    timeline = _rows("version_timeline")
+    restore_points = _rows("restore_points")
+    assert events[-1]["event_type"] == "created"
+    assert events[-1]["rel_path"] == "auto-save.txt"
+    assert timeline[-1]["title"] == "Created auto-save.txt"
+    assert restore_points[-1]["reason"] == "automatic-save"

@@ -133,7 +133,8 @@ root.
 Continuous protection metadata is recorded alongside the existing snapshot
 model. SafeVault writes a file event journal, a version timeline, and restore
 points for completed snapshots, while file content remains stored in the
-BLAKE3-addressed object store.
+BLAKE3-addressed object store. Watcher-triggered saves therefore become normal
+recoverable versions instead of requiring users to manage snapshot IDs.
 
 AI/Codex protection mode is automatic for sandboxed `codex` and `cursor`
 commands run through `safevault run`. SafeVault records a `before-ai-change`

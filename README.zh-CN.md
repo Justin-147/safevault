@@ -110,6 +110,7 @@ safevault search report --deleted
 
 连续保护元数据会和现有快照模型一起记录：SafeVault 会写入文件事件日志、
 版本时间线和快照恢复点，但文件内容仍然保存在 BLAKE3 地址化对象库中。
+watcher 触发的自动保存会变成普通可恢复版本，用户不需要管理 snapshot 编号。
 `safevault retention-plan --smart` 会生成非破坏性的智能保留计划，用于平衡
 最近高频版本、小时/天级恢复点、最新版本和重要 checkpoint。
 
