@@ -26,6 +26,8 @@ Added:
 - AI/Codex protection mode records `before-ai-change` and `after-ai-change`
   restore points for sandboxed Codex/Cursor commands, plus important
   `after-large-change` restore points when the watcher sees high-volume edits.
+- AI workflow detection now recognizes additional common coding assistants such
+  as Aider, Claude, Copilot, Cline, and Windsurf by command name.
 - Productization docs now include English and Chinese install/user guides plus
   conservative Windows user-startup helper scripts for daemon/tray setup.
 

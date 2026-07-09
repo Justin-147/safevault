@@ -33,9 +33,9 @@ safevault apply <sandbox-id>
 ```
 
 SafeVault records `before-ai-change` and `after-ai-change` restore points for
-Codex/Cursor sandbox sessions. The watcher also marks high-volume edit batches
-as `after-large-change`, so Recovery Home can show a timeline around risky
-changes.
+Codex, Cursor, Aider, Claude, Windsurf, and similar sandboxed AI coding
+sessions. The watcher also marks high-volume edit batches as
+`after-large-change`, so Recovery Home can show a timeline around risky changes.
 
 ## Pause Or Stop
 

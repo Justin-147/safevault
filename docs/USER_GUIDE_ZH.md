@@ -30,9 +30,10 @@ safevault apply <sandbox-id> --dry-run
 safevault apply <sandbox-id>
 ```
 
-Codex/Cursor sandbox 会记录 `before-ai-change` 和 `after-ai-change` 恢复点。
-watcher 检测到大规模文件变化时会记录 `after-large-change` 重要恢复点，方便在
-Recovery Home 时间线中回到风险修改前后。
+Codex、Cursor、Aider、Claude、Windsurf 等 AI 编程工具的 sandbox 会记录
+`before-ai-change` 和 `after-ai-change` 恢复点。watcher 检测到大规模文件变化
+时会记录 `after-large-change` 重要恢复点，方便在 Recovery Home 时间线中回到
+风险修改前后。
 
 ## 暂停或关闭保护
 

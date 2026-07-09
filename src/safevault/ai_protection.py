@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
-AI_TOOL_NAMES = {"codex", "cursor"}
+AI_TOOL_NAMES = {
+    "aider",
+    "claude",
+    "cline",
+    "codex",
+    "cursor",
+    "copilot",
+    "windsurf",
+}
 
 
 def detect_ai_tool(command: Sequence[str]) -> str | None:
@@ -28,7 +36,9 @@ def _normalized_command_name(token: str) -> str:
     cleaned = token.strip().strip("\"'")
     if not cleaned:
         return ""
-    name = Path(cleaned).name.lower()
+    posix_name = Path(cleaned).name
+    windows_name = PureWindowsPath(cleaned).name
+    name = (windows_name if len(windows_name) < len(posix_name) else posix_name).lower()
     for suffix in (".exe", ".cmd", ".bat", ".ps1", ".py"):
         if name.endswith(suffix):
             return name[: -len(suffix)]

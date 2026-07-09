@@ -115,10 +115,10 @@ watcher 触发的自动保存会变成普通可恢复版本，用户不需要管
 最近高频版本、小时/天级恢复点、最新版本和重要 checkpoint。
 `safevault.retention_engine` 会做 dry-run 空间估算，但不会删除数据。
 
-AI/Codex 保护模式会自动识别通过 `safevault run` 启动的 `codex` 和 `cursor`
-命令：AI 修改前记录 `before-ai-change` 恢复点，sandbox apply 后记录
-`after-ai-change` 恢复点；watcher 检测到大规模文件变化时也会记录
-`after-large-change` 重要恢复点。
+AI/Codex 保护模式会自动识别通过 `safevault run` 启动的 `codex`、`cursor`、
+`aider`、`claude`、`windsurf` 等 AI 编程工具：AI 修改前记录
+`before-ai-change` 恢复点，sandbox apply 后记录 `after-ai-change` 恢复点；
+watcher 检测到大规模文件变化时也会记录 `after-large-change` 重要恢复点。
 
 ## 6.2 第一次启动向导
 

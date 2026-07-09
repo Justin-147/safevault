@@ -136,12 +136,13 @@ points for completed snapshots, while file content remains stored in the
 BLAKE3-addressed object store. Watcher-triggered saves therefore become normal
 recoverable versions instead of requiring users to manage snapshot IDs.
 
-AI/Codex protection mode is automatic for sandboxed `codex` and `cursor`
-commands run through `safevault run`. SafeVault records a `before-ai-change`
-restore point before the AI command and an `after-ai-change` restore point after
-applying the sandbox, so the Recovery Home timeline can take users back to the
-state before the AI edit. The watcher also marks high-volume edit batches as
-`after-large-change` restore points.
+AI/Codex protection mode is automatic for sandboxed AI coding tools such as
+`codex`, `cursor`, `aider`, `claude`, and `windsurf` when run through
+`safevault run`. SafeVault records a `before-ai-change` restore point before the
+AI command and an `after-ai-change` restore point after applying the sandbox, so
+the Recovery Home timeline can take users back to the state before the AI edit.
+The watcher also marks high-volume edit batches as `after-large-change` restore
+points.
 
 ## Daemon And Tray
 
