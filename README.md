@@ -161,7 +161,9 @@ On startup it scans enabled roots, then watches file changes. Created and
 modified files are debounced into snapshots. Deleted tracked files receive an
 immediate deleted marker so the Recovery Home can show them without waiting for
 a later manual snapshot. Bulk delete and large change activity create warning
-notifications.
+notifications. Suspicious encrypted-file extension bursts create an important
+`emergency-mass-change` restore point and an error notification; SafeVault still
+does not delete or roll back user files automatically.
 
 The tray is optional and requires `pip install -e '.[tray]'`. It can open the
 local GUI, run snapshots, verify, trigger backup, pause protection for 30

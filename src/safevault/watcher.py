@@ -10,6 +10,7 @@ from watchdog.observers import Observer
 
 from safevault.db import connect, list_roots
 from safevault.ignore import is_ignored
+from safevault.mass_change import has_suspicious_encryption_extension
 from safevault.snapshot import create_snapshot
 
 SnapshotFunc = Callable[[Path, str], int]
@@ -26,6 +27,7 @@ class SafeVaultEventHandler(FileSystemEventHandler):
         moved_func: Callable[[Path, Path, Path], None] | None = None,
         bulk_delete_threshold: int = 20,
         bulk_change_threshold: int = 100,
+        suspicious_extension_threshold: int = 25,
         bulk_delete_window_seconds: float = 30,
         bulk_delete_warning_cooldown_seconds: float = 60,
     ) -> None:
@@ -37,15 +39,19 @@ class SafeVaultEventHandler(FileSystemEventHandler):
         self.moved_func = moved_func
         self.bulk_delete_threshold = bulk_delete_threshold
         self.bulk_change_threshold = bulk_change_threshold
+        self.suspicious_extension_threshold = suspicious_extension_threshold
         self.bulk_delete_window_seconds = bulk_delete_window_seconds
         self.bulk_delete_warning_cooldown_seconds = bulk_delete_warning_cooldown_seconds
         self.last_bulk_delete_warning_at = -bulk_delete_warning_cooldown_seconds
         self.last_bulk_change_warning_at = -bulk_delete_warning_cooldown_seconds
+        self.last_suspicious_extension_warning_at = -bulk_delete_warning_cooldown_seconds
         self.pending = False
         self.large_change_pending = False
+        self.emergency_change_pending = False
         self.last_event_at = 0.0
         self.delete_times: list[float] = []
         self.change_times: list[float] = []
+        self.suspicious_extension_times: list[float] = []
         self._timer: threading.Timer | None = None
         self._lock = threading.Lock()
 
@@ -79,6 +85,26 @@ class SafeVaultEventHandler(FileSystemEventHandler):
                         f"{self.bulk_change_threshold} file change events in "
                         f"{int(self.bulk_delete_window_seconds)} seconds"
                     )
+                if has_suspicious_encryption_extension(path_obj):
+                    self.suspicious_extension_times.append(current_time)
+                    self.suspicious_extension_times = [
+                        value
+                        for value in self.suspicious_extension_times
+                        if current_time - value <= self.bulk_delete_window_seconds
+                    ]
+                    if (
+                        len(self.suspicious_extension_times)
+                        > self.suspicious_extension_threshold
+                        and current_time - self.last_suspicious_extension_warning_at
+                        >= self.bulk_delete_warning_cooldown_seconds
+                    ):
+                        self.emergency_change_pending = True
+                        self.last_suspicious_extension_warning_at = current_time
+                        self.warn_func(
+                            "Emergency warning: suspicious encrypted-file extension "
+                            f"activity exceeded {self.suspicious_extension_threshold} "
+                            f"events in {int(self.bulk_delete_window_seconds)} seconds"
+                        )
             if event_type == "deleted":
                 if self.deleted_func is not None:
                     self.deleted_func(self.root, path_obj)
@@ -120,8 +146,14 @@ class SafeVaultEventHandler(FileSystemEventHandler):
             if not self.pending:
                 return False
             self.pending = False
-            reason = "after-large-change" if self.large_change_pending else "watch"
+            if self.emergency_change_pending:
+                reason = "emergency-mass-change"
+            elif self.large_change_pending:
+                reason = "after-large-change"
+            else:
+                reason = "watch"
             self.large_change_pending = False
+            self.emergency_change_pending = False
         self.snapshot_func(self.root, reason)
         return True
 

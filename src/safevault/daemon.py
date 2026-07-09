@@ -756,10 +756,23 @@ def _record_crash_recovery_if_needed(heartbeat_interval_seconds: int) -> None:
 
 def _record_high_risk_warning(message: str) -> None:
     is_delete = "delete" in message.lower()
+    is_emergency = "emergency" in message.lower()
     _create_notification(
-        kind="bulk-delete" if is_delete else "large-change",
-        severity="warning",
-        title="Bulk delete activity detected" if is_delete else "Large file change detected",
+        kind=(
+            "bulk-delete"
+            if is_delete
+            else "mass-change"
+            if is_emergency
+            else "large-change"
+        ),
+        severity="error" if is_emergency else "warning",
+        title=(
+            "Bulk delete activity detected"
+            if is_delete
+            else "Emergency mass change detected"
+            if is_emergency
+            else "Large file change detected"
+        ),
         message=message,
     )
 

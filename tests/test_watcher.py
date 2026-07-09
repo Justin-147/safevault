@@ -95,6 +95,30 @@ def test_large_change_batch_uses_large_change_snapshot_reason(project) -> None:
     assert calls == [(project, "after-large-change")]
 
 
+def test_suspicious_encrypted_extension_batch_uses_emergency_checkpoint(
+    project,
+) -> None:
+    warnings = []
+    calls = []
+    handler = SafeVaultEventHandler(
+        project,
+        snapshot_func=lambda path, reason: calls.append((path, reason)) or 1,
+        warn_func=warnings.append,
+        suspicious_extension_threshold=2,
+    )
+
+    handler.note_event("created", project / "a.locked", now=1.0)
+    handler.note_event("modified", project / "b.encrypted", now=2.0)
+    handler.note_event("created", project / "c.crypt", now=3.0)
+    assert handler.flush(now=4.5)
+
+    assert warnings == [
+        "Emergency warning: suspicious encrypted-file extension activity exceeded "
+        "2 events in 30 seconds"
+    ]
+    assert calls == [(project, "emergency-mass-change")]
+
+
 def test_move_file_out_of_root_records_deleted_marker(project, tmp_path) -> None:
     deleted = []
     handler = SafeVaultEventHandler(

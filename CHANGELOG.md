@@ -28,6 +28,9 @@ Added:
   `after-large-change` restore points when the watcher sees high-volume edits.
 - AI workflow detection now recognizes additional common coding assistants such
   as Aider, Claude, Copilot, Cline, and Windsurf by command name.
+- Mass-change protection now detects bursts of suspicious encrypted-file
+  extensions and records an important `emergency-mass-change` restore point with
+  an error notification.
 - Productization docs now include English and Chinese install/user guides plus
   conservative Windows user-startup helper scripts for daemon/tray setup.
 

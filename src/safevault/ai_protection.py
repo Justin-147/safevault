@@ -29,6 +29,7 @@ def is_ai_snapshot_reason(reason: str) -> bool:
         "before-ai-change",
         "after-ai-change",
         "after-large-change",
+        "emergency-mass-change",
     }
 
 

@@ -151,6 +151,9 @@ safevault tray
 
 daemon 单实例运行，记录 heartbeat，启动时扫描启用 root，文件变化后自动快照。
 删除事件会立即记录 deleted marker；批量删除和大规模文件变化会生成 warning。
+如果短时间出现大量 `.locked`、`.encrypted`、`.crypt` 等疑似加密扩展名，
+SafeVault 会记录 `emergency-mass-change` 重要恢复点并发出 error 通知，但仍
+不会自动删除或回滚用户文件。
 托盘是可选功能，需要安装：
 
 ```bash
