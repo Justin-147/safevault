@@ -15,6 +15,9 @@ def test_version_strings_are_consistent() -> None:
     release_check = (root / "scripts" / "release_check.sh").read_text(
         encoding="utf-8"
     )
+    onboarding_smoke = (root / "scripts" / "onboarding_smoke.py").read_text(
+        encoding="utf-8"
+    )
 
     assert pyproject["project"]["version"] == __version__ == "1.0.1"
     assert "## 1.0.1" in changelog
@@ -22,3 +25,6 @@ def test_version_strings_are_consistent() -> None:
     assert "1.0.1" in readme_zh
     assert 'assert __version__ == "1.0.1"' in release_check
     assert '"safevault/ui/static/safevault.js"' in release_check
+    assert "设置完成" in onboarding_smoke
+    assert "pre-daemon-start" in onboarding_smoke
+    assert "onboarding-initial" not in onboarding_smoke

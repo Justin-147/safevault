@@ -7,7 +7,9 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from safevault.config import load_config
+from safevault.daemon import run_daemon
 from safevault.db import connect
+from safevault.ui import services
 from safevault.ui.app import create_app
 
 
@@ -22,28 +24,46 @@ def main() -> None:
         os.environ["SAFEVAULT_HOME"] = str(safevault_home)
         os.environ["USERPROFILE"] = str(user_home)
         token = "smoke-token"
-        with TestClient(create_app(token=token)) as client:
-            first = client.get("/", params={"token": token})
-            assert first.status_code == 200
-            assert "欢迎使用 SafeVault" in first.text
-            completed = client.post(
-                "/onboarding",
-                data={"roots": str(desktop), "backup_schedule": "manual"},
-            )
-            assert completed.status_code == 200
-            assert "Onboarding complete" in completed.text
+        daemon_requests: list[str] = []
+        original_ensure_daemon = services.ensure_daemon_running
+        services.ensure_daemon_running = lambda: daemon_requests.append("start") or True
+        try:
+            with TestClient(create_app(token=token)) as client:
+                first = client.get("/", params={"token": token})
+                assert first.status_code == 200
+                assert "欢迎使用 SafeVault" in first.text
+                completed = client.post(
+                    "/onboarding",
+                    data={"roots": str(desktop), "backup_schedule": "manual"},
+                )
+                assert completed.status_code == 200
+                assert "设置完成" in completed.text
+                assert "初始扫描正在后台进行" in completed.text
+        finally:
+            services.ensure_daemon_running = original_ensure_daemon
+        assert daemon_requests == ["start"]
         config = load_config()
         assert config.app.onboarding_completed is True
         conn = connect()
         try:
-            snapshots = int(
+            synchronous_snapshots = int(
+                conn.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0]
+            )
+        finally:
+            conn.close()
+        assert synchronous_snapshots == 0
+
+        run_daemon(test_once=True)
+        conn = connect()
+        try:
+            background_snapshots = int(
                 conn.execute(
-                    "SELECT COUNT(*) FROM snapshots WHERE reason = 'onboarding-initial'"
+                    "SELECT COUNT(*) FROM snapshots WHERE reason = 'pre-daemon-start'"
                 ).fetchone()[0]
             )
         finally:
             conn.close()
-        assert snapshots == 1
+        assert background_snapshots == 1
     print("onboarding smoke ok")
 
 
