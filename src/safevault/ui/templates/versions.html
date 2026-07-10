@@ -1,21 +1,21 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Recovery Center</h1>
+<h1>恢复中心</h1>
 <form method="get" action="/versions" class="panel">
-  <label>File <input name="file" value="{{ file }}" required></label>
-  <button type="submit">Load History</button>
+  <label>文件 <input name="file" value="{{ file }}" required></label>
+  <button type="submit">查看历史</button>
 </form>
-<p class="warning">Restore writes to the target path. Existing target will be preserved by SafeVault before overwrite.</p>
+<p class="warning">恢复会写入目标位置；如果目标文件已存在，SafeVault 会先保存当前版本。</p>
 {% if file %}
 <form method="post" action="/restore" class="inline">
   <input type="hidden" name="file" value="{{ file }}">
   <input type="hidden" name="mode" value="latest">
   <input type="hidden" name="confirmation" value="CONFIRM">
-  <button type="submit" onclick="return confirm('Restore the latest safe version?')">Restore Latest</button>
+  <button type="submit" onclick="return confirm('恢复最近的安全版本？')">恢复最近版本</button>
 </form>
 {% endif %}
 <table>
-  <tr><th>Restore point</th><th>Captured</th><th>Size</th><th>Status</th><th>Action</th></tr>
+  <tr><th>恢复点</th><th>保存时间</th><th>大小</th><th>状态</th><th>操作</th></tr>
   {% for version in versions %}
   <tr>
     <td>{{ version.label }}</td>
@@ -28,9 +28,9 @@
         <input type="hidden" name="file" value="{{ file }}">
         <input type="hidden" name="mode" value="version">
         <input type="hidden" name="version_id" value="{{ version.version_id }}">
-        <input name="to_path" placeholder="optional alternate path">
+        <input name="to_path" placeholder="可选：恢复为新文件">
         <input type="hidden" name="confirmation" value="CONFIRM">
-        <button type="submit" onclick="return confirm('Restore this point?')">Restore</button>
+        <button type="submit" onclick="return confirm('恢复这个版本？')">恢复</button>
       </form>
       {% endif %}
     </td>

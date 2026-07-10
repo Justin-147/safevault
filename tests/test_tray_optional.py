@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from safevault.cli import app
-from safevault.tray import open_safevault_ui, tray_available
+from safevault.tray import open_safevault_ui, quit_safevault, tray_available
 from safevault.ui.session import UiSession
 
 
@@ -93,3 +93,17 @@ def test_ui_session_ignores_stale_unreachable_session(monkeypatch, sv_home) -> N
 
     assert spawned == [["ui"]]
     assert opened == ["http://127.0.0.1:8765/?token=fresh"]
+
+
+def test_quit_safevault_stops_daemon_and_tray(monkeypatch, sv_home) -> None:
+    calls = []
+
+    class FakeIcon:
+        def stop(self) -> None:
+            calls.append("tray")
+
+    monkeypatch.setattr("safevault.tray.request_daemon_stop", lambda: calls.append("daemon"))
+
+    quit_safevault(FakeIcon())
+
+    assert calls == ["daemon", "tray"]

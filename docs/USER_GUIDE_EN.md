@@ -16,6 +16,10 @@ The GUI home page shows protected folders, daemon health, recent deleted files,
 recent modified files, the restore timeline, search, and quick restore actions.
 Users do not need to know snapshot IDs for common recovery.
 
+The status strip also shows local object-store use against the configured
+storage budget. v1.0.0 smart retention is planning/dry-run only, so SafeVault
+does not silently remove historical versions.
+
 ## Protect Folders
 
 During onboarding, choose common folders such as Desktop, Documents, Pictures,
@@ -74,6 +78,10 @@ safevault protect remove C:\Users\you\Documents --confirm
 ```
 
 Pause and remove do not delete stored snapshots or object content.
+
+The tray's **Quit SafeVault** action stops the daemon and closes the tray for the
+current session. Windows Startup settings control whether protection starts
+again at the next sign-in.
 
 To remove user Startup entries on Windows:
 

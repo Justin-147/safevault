@@ -234,6 +234,7 @@ def auto_detect_candidates() -> list[AutoProtectCandidate]:
         [
             (userprofile / "Desktop", "desktop", True, "Desktop"),
             (userprofile / "Documents", "documents", True, "Documents"),
+            (userprofile / "Pictures", "documents", True, "Pictures"),
             (userprofile / "Downloads", "downloads", False, "Downloads is optional"),
             (Path("D:/CodexWork"), "coding", True, "Codex workspace"),
             (userprofile / "source", "coding", True, "source projects"),

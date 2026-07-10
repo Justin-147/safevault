@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.0.0 - 2026-07-10
+
+SafeVault 1.0.0 turns the existing snapshot and object-store foundation into a
+continuous local protection product with a recovery-first interface. The core
+BLAKE3 object store, SQLite metadata model, conservative restore behavior, and
+sandbox apply safety boundaries remain unchanged.
+
 Added:
 - Windows productization assets: a shared startup integration module, first-run
   startup choice, and Inno Setup packaging script for building
@@ -39,6 +46,28 @@ Added:
 - Release acceptance documentation and tests now cover the v1 productization
   pillars across installation, protection, recovery, AI/mass-change handling,
   retention, and validation commands.
+
+Release hardening:
+- Documentation now has one bilingual entry point, one user guide and FAQ per
+  language, and a smaller advanced section; obsolete duplicate guides and the
+  completed internal implementation plan are no longer shipped.
+- GUI help links to the same core guides as the repository README, while
+  maintainer acceptance material is kept outside end-user documentation.
+- Removed unused platform placeholder modules and a no-op static script.
+- Windows Startup commands now work in both Python and frozen PyInstaller
+  installations and avoid duplicate `.cmd` entries when installer shortcuts
+  already exist.
+- The Windows installer starts background protection after installation, enables
+  the tray task by default, and removes both shortcut and command startup files
+  during uninstall.
+- First-run recommendations include Pictures and hide Windows-only startup
+  controls on unsupported platforms.
+- Recovery Home reports the real background state and displays local object-store
+  usage against the configured storage budget.
+- English and Chinese FAQ/release documentation complete the v1 documentation
+  set.
+- The release-check script uses an isolated temporary `SAFEVAULT_HOME` and does
+  not run daemon smoke checks against a user's live vault.
 
 ## 0.2.0rc1
 

@@ -25,7 +25,9 @@ safevault apply <sandbox-id> --allow-delete
 
 GUI 中 apply with delete 也必须输入 `ALLOW DELETE`。
 
-如果需要从 GUI 恢复 Codex 修改前的版本，恢复表单必须输入 `RESTORE`。这不是额外绕过保护，而是对写入操作的防误点确认。
+如果需要恢复 Codex 修改前的状态，在 Recovery Home 时间线中选择
+`before-ai-change` 恢复点。普通模式使用本地确认框，高级模式仍兼容输入
+`RESTORE` 的旧流程。
 
 ## GUI 审查 diff
 

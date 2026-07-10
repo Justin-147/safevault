@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>首次启动向导</h1>
+<h1>欢迎使用 SafeVault</h1>
+<p>选择需要自动保护的文件夹。推荐目录已勾选，你可以随时取消或稍后调整。</p>
 <form method="post" action="/onboarding" class="panel">
   <h2>选择保护目录</h2>
   <table>
-    <tr><th>Use</th><th>Path</th><th>Profile</th><th>Reason</th></tr>
+    <tr><th>保护</th><th>文件夹</th><th>类型</th><th>说明</th></tr>
     {% for candidate in candidates %}
     <tr>
       <td><input type="checkbox" name="roots" value="{{ candidate.path }}" {% if candidate.recommended %}checked{% endif %}></td>
@@ -13,30 +14,33 @@
       <td>{{ candidate.reason }}</td>
     </tr>
     {% else %}
-    <tr><td colspan="4">No common folders detected. You can add folders after setup.</td></tr>
+    <tr><td colspan="4">没有检测到常见文件夹。完成设置后仍可手动添加。</td></tr>
     {% endfor %}
   </table>
   <label>
     <input type="checkbox" name="skip_roots" value="true">
-    Skip adding protected folders for now
+    暂不添加保护目录
   </label>
 
   <h2>自动备份</h2>
-  <label>Backup target <input name="backup_target" placeholder="D:\SafeVaultBackups"></label>
+  <label>备份位置 <input name="backup_target" placeholder="D:\SafeVaultBackups"></label>
   <select name="backup_schedule">
-    <option value="daily" selected>daily</option>
-    <option value="weekly">weekly</option>
-    <option value="manual">manual</option>
+    <option value="daily" selected>每天</option>
+    <option value="weekly">每周</option>
+    <option value="manual">仅手动</option>
   </select>
 
+  {% if startup_supported %}
   <h2>开机启动</h2>
+  <input type="hidden" name="startup_configured" value="true">
   <label>
     <input type="checkbox" name="startup_enabled" value="true" checked>
-    Start SafeVault automatically with Windows
+    随 Windows 自动启动 SafeVault（推荐）
   </label>
+  {% endif %}
 
   <h2>安全说明</h2>
   <p class="warning">SafeVault 不做裸盘恢复，不绕过权限，不自动删除用户文件。恢复、导入和覆盖仍会要求显式确认。</p>
-  <button type="submit">Complete setup</button>
+  <button type="submit">开始保护</button>
 </form>
 {% endblock %}

@@ -10,6 +10,8 @@ def test_productization_guides_and_windows_scripts_are_present() -> None:
         root / "docs" / "INSTALL_ZH.md",
         root / "docs" / "USER_GUIDE_EN.md",
         root / "docs" / "USER_GUIDE_ZH.md",
+        root / "docs" / "FAQ_EN.md",
+        root / "docs" / "FAQ_ZH.md",
         root / "scripts" / "install_windows_user.ps1",
         root / "scripts" / "uninstall_windows_user.ps1",
     ]
@@ -46,8 +48,20 @@ def test_release_check_includes_productization_guides() -> None:
         "INSTALL_ZH.md",
         "USER_GUIDE_EN.md",
         "USER_GUIDE_ZH.md",
+        "FAQ_EN.md",
+        "FAQ_ZH.md",
     ):
         assert name in pyproject
         assert name in release_check
     assert '"docs/README.md"' in pyproject
     assert "safevault/ui/docs/README.md" in release_check
+    assert 'export SAFEVAULT_HOME="$AUDIT_TMP/home"' in release_check
+
+
+def test_source_distribution_excludes_internal_agent_material() -> None:
+    root = Path(__file__).resolve().parents[1]
+    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert '"/.github"' in pyproject
+    assert '"/AGENTS.md"' in pyproject
+    assert '"/docs/dev"' in pyproject

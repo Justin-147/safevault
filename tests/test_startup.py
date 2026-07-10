@@ -4,6 +4,7 @@ import os
 
 import pytest
 
+import safevault.startup as startup
 from safevault.errors import SafeVaultError
 from safevault.startup import install_user_startup, uninstall_user_startup, windows_startup_dir
 
@@ -42,3 +43,30 @@ def test_windows_startup_install_and_uninstall(monkeypatch, tmp_path) -> None:
 def test_windows_startup_rejects_non_windows() -> None:
     with pytest.raises(SafeVaultError, match="Windows startup integration"):
         windows_startup_dir()
+
+
+def test_frozen_startup_command_runs_packaged_executable_directly() -> None:
+    command = startup._startup_command(
+        r"C:\Program Files\SafeVault\safevault.exe",
+        ["daemon", "run"],
+        frozen=True,
+    )
+
+    assert command == '"C:\\Program Files\\SafeVault\\safevault.exe" daemon run'
+    assert "-m safevault" not in command
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Startup folder is Windows-only")
+def test_installer_shortcut_prevents_duplicate_cmd_entry(monkeypatch, tmp_path) -> None:
+    appdata = tmp_path / "AppData" / "Roaming"
+    monkeypatch.setenv("APPDATA", str(appdata))
+    startup_dir = windows_startup_dir()
+    startup_dir.mkdir(parents=True)
+    link = startup_dir / startup.DAEMON_STARTUP_LINK_NAME
+    link.write_bytes(b"installer shortcut")
+
+    result = install_user_startup(daemon=True, tray=False, frozen=True)
+
+    assert result.daemon_entry == link
+    assert result.daemon_changed is False
+    assert not (startup_dir / startup.DAEMON_STARTUP_NAME).exists()

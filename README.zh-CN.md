@@ -1,228 +1,122 @@
 # SafeVault 中文说明
 
-[English README](README.md)
+**[English](README.md) | [中文安装指南](docs/INSTALL_ZH.md) | [中文用户指南](docs/USER_GUIDE_ZH.md) | [文档中心](docs/README.md)**
 
-SafeVault 是一个本地项目目录保护和恢复工具。它通过快照记录文件历史，
-把内容存入 BLAKE3 地址化对象库，并提供恢复、沙箱运行、保守 apply、
-导出备份和导入校验能力。
+SafeVault 是一款本地优先的文件保护和恢复工具。选择需要保护的文件夹后，它会在
+后台记录可恢复版本，在恢复首页显示最近删除和修改，并把高风险 AI 编程操作放到
+项目副本中执行。
 
-## 1. SafeVault 是什么
+## 从这里开始
 
-SafeVault 适合在使用 Codex、脚本或批量重构工具前保护项目目录。它可以：
+- 第一次安装：[中文安装指南](docs/INSTALL_ZH.md)
+- 日常保护和恢复：[中文用户指南](docs/USER_GUIDE_ZH.md)
+- 误删或批量修改后的处理：[恢复手册](docs/zh/RECOVERY_PLAYBOOK.md)
+- 常见疑问：[常见问题](docs/FAQ_ZH.md)
 
-- 初始化受保护目录。
-- 手动或自动记录快照。
-- 查看文件版本历史。
-- 恢复误删或被覆盖的文件。
-- 在复制出来的 sandbox 中运行命令。
-- 审查 sandbox diff 后再决定是否 apply。
-- 导出备份并在新 SAFEVAULT_HOME 中导入。
-- 通过本地 GUI 做常见操作。
+普通用户不需要理解 snapshot 编号、对象 hash 或 SQLite。安装后完成一次向导，平时
+让 SafeVault 在后台运行，需要恢复时再打开恢复首页。
 
-## 2. SafeVault 不能做什么
+## SafeVault 能做什么
 
-安全边界必须说清楚：
+- 自动保护首次向导中选中的文件夹。
+- 文件变化后记录版本，已跟踪文件消失后记录删除标记。
+- 从“最近删除”、搜索或版本时间线一键恢复。
+- 使用 BLAKE3 内容寻址对象库去重保存文件内容。
+- 使用 SQLite 记录路径、版本、事件和恢复点。
+- 通过 `safevault run` 为 Codex 等 AI 编程操作建立前后恢复点。
+- 对异常的大批量变化和疑似加密扩展名发出警告。
+- 把校验后的备份导出到外置硬盘、NAS 或其他位置。
 
-- 不做裸盘恢复。
-- 不是裸盘恢复工具。
-- 不是恶意代码沙箱。
-- 只能恢复已经被 SafeVault 快照捕获的版本。
-- 不保证 SSD TRIM 后恢复。
-- 不是 OS 备份、Time Machine、云同步或离机备份的替代品。
-- `safevault run` 保护原项目目录不被直接修改，但命令仍可能访问用户权限允许的系统资源。
+## 安装
 
-## 3. 安装
+Windows 普通用户应运行 `SafeVaultSetup.exe`。安装器可以默认启用当前用户的后台
+保护和托盘开机启动，也可以在安装时取消这些选项。安装结束后会打开首次启动向导。
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev,ui]'
-```
-
-Windows PowerShell：
+源码安装面向开发者：
 
 ```powershell
+python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -e .[dev,ui]
+pip install -e .[dev,ui,tray]
+safevault ui --open
 ```
 
-连续保护模式的完整说明见 [中文安装指南](docs/INSTALL_ZH.md)、
-[中文用户指南](docs/USER_GUIDE_ZH.md)、[Install Guide](docs/INSTALL_EN.md) 和
-[User Guide](docs/USER_GUIDE_EN.md)。
+完整步骤见 [中文安装指南](docs/INSTALL_ZH.md)。
 
-Windows 发布构建者可以使用 `scripts/build_windows_installer.ps1` 和 Inno Setup
-生成 `dist/SafeVaultSetup.exe`。
+## 第一次使用
 
-## 4. 快速开始
+首次向导会推荐当前电脑上实际存在的 Desktop、Documents、Pictures 和常见项目
+目录。只勾选需要保护的目录，SafeVault 随后创建初始版本并开始持续保护。
 
-```bash
-safevault init ~/Projects/myapp
-safevault snapshot ~/Projects/myapp --reason initial
-safevault versions ~/Projects/myapp/file.py
-safevault restore ~/Projects/myapp/file.py --latest
-safevault verify --deep
-```
-
-## 5. 常用命令
-
-```bash
-safevault roots
-safevault status ~/Projects/myapp
-safevault deleted --since 7d
-safevault doctor --deep
-safevault prune --dry-run
-```
-
-## 6. 可视化界面
-
-启动本地 GUI：
+以后打开恢复首页：
 
 ```bash
 safevault ui --open
 ```
 
-GUI 默认只监听 `127.0.0.1`，启动时生成随机 token。不要把 GUI 暴露到公网。
-详细说明见 [GUI 指南](docs/zh/GUI_GUIDE.md)。
+## 恢复误删文件
 
-GUI 高风险操作需要输入确认词：`RESTORE`、`ALLOW DELETE`、`PRUNE`、
-`CLEAN SANDBOXES`、`OVERWRITE EXPORT`、`SKIP VERIFY`、`IMPORT`、`OVERWRITE`。
-GUI 导入默认是 dry-run。要在浏览器里真正导入，需要取消 dry-run 并输入
-`IMPORT`；覆盖目标还必须输入 `OVERWRITE`。SafeVault 仍是 `0.2.0rc1`
-release candidate，不是 stable/final。
+在恢复首页的“最近删除”或搜索结果中找到文件，选择恢复点并点击“恢复”。如果原位置
+已经存在文件，SafeVault 会先保存当前内容再写回历史版本。
 
-## 6.1 自动保护模式
-
-SafeVault 0.2.0rc1 新增自动保护模式。目标是让用户完成一次配置后，
-后台守护进程自动记录文件变化，误删后打开 GUI 首页即可看到“最近删除”。
+高级用户仍可使用 CLI：
 
 ```bash
-safevault protect auto-detect
-safevault protect add ~/Documents --profile documents
-safevault daemon run
 safevault recent deleted --since 24h
-safevault search report --deleted
+safevault restore C:\path\to\file --latest
 ```
 
-`protect add` 会拒绝文件系统根目录、`SAFEVAULT_HOME`、包含
-`SAFEVAULT_HOME` 的目录、重复 root，以及已配置的备份目录。`protect remove
---confirm` 只停用自动保护，不删除已有快照和对象库；再次对同一路径执行
-`protect add` 会重新启用自动保护。
-
-连续保护元数据会和现有快照模型一起记录：SafeVault 会写入文件事件日志、
-版本时间线和快照恢复点，但文件内容仍然保存在 BLAKE3 地址化对象库中。
-watcher 触发的自动保存会变成普通可恢复版本，用户不需要管理 snapshot 编号。
-`safevault retention-plan --smart` 会生成非破坏性的智能保留计划，用于平衡
-最近高频版本、小时/天级恢复点、最新版本和重要 checkpoint。
-`safevault.retention_engine` 会做 dry-run 空间估算，但不会删除数据。
-
-AI/Codex 保护模式会自动识别通过 `safevault run` 启动的 `codex`、`cursor`、
-`aider`、`claude`、`windsurf` 等 AI 编程工具：AI 修改前记录
-`before-ai-change` 恢复点，sandbox apply 后记录 `after-ai-change` 恢复点；
-watcher 检测到大规模文件变化时也会记录 `after-large-change` 重要恢复点。
-
-## 6.2 第一次启动向导
-
-第一次打开：
+初始化和手动恢复命令仍然兼容：
 
 ```bash
-safevault ui --open
+safevault init C:\path\to\folder
+safevault restore C:\path\to\file --latest
 ```
 
-GUI 会显示首次启动向导：选择保护目录、可选配置备份目录、确认安全边界。
-完成后 SafeVault 会自动添加 root 并创建初始快照。详见
-[首次启动向导](docs/zh/onboarding.md)。
+更多场景见 [恢复手册](docs/zh/RECOVERY_PLAYBOOK.md)。
 
-## 6.3 误删后如何一键恢复
-
-GUI 首页现在是 Recovery Home，会显示最近删除、最近修改、恢复时间线、搜索和快捷操作。
-恢复中心的历史版本页面默认隐藏 snapshot ID、version ID 和对象 hash，只显示
-恢复点名称和时间；技术编号只作为表单内部字段使用。
-普通恢复不再要求输入 `RESTORE`，但仍由本地 UI 提交显式确认；高级模式和旧
-流程仍兼容 `RESTORE`。详见 [一键恢复](docs/zh/one-click-restore.md)。
-
-## 6.4 后台守护进程和托盘
+## 保护 AI 编程操作
 
 ```bash
-safevault daemon run
-safevault daemon status
-safevault daemon stop
-safevault tray
-```
-
-daemon 单实例运行，记录 heartbeat，启动时扫描启用 root，文件变化后自动快照。
-删除事件会立即记录 deleted marker；批量删除和大规模文件变化会生成 warning。
-如果短时间出现大量 `.locked`、`.encrypted`、`.crypt` 等疑似加密扩展名，
-SafeVault 会记录 `emergency-mass-change` 重要恢复点并发出 error 通知，但仍
-不会自动删除或回滚用户文件。
-托盘是可选功能，需要安装：
-
-```bash
-pip install -e '.[tray]'
-```
-
-详见 [守护进程和托盘](docs/zh/daemon-tray.md)。
-
-## 6.5 自动导出备份
-
-```bash
-safevault backup configure --target D:\SafeVaultBackups --schedule daily
-safevault backup status
-safevault backup run
-safevault backup disable
-```
-
-自动备份复用现有 export 校验路径，备份文件名使用
-`safevault-backup-YYYYMMDD-HHMMSS-ffffff.tar.gz`，备份目录不能位于
-`SAFEVAULT_HOME` 或受保护 root 内。详见 [自动备份](docs/zh/automatic-backup.md)。
-
-## 7. Codex 安全工作流
-
-```bash
-safevault snapshot ~/Projects/myapp --reason before-codex
-safevault run --project ~/Projects/myapp -- codex
-safevault sandboxes --latest
+safevault run --project C:\path\to\project -- codex
 safevault apply <sandbox-id> --dry-run
 safevault apply <sandbox-id>
 ```
 
-默认 apply 不删除文件；删除必须显式 `--allow-delete`。详见
-[Codex 工作流](docs/zh/CODEX_WORKFLOW.md)。
+命令只在项目副本中运行。应用结果时 SafeVault 会检查路径、类型、hash、symlink 和
+冲突；默认跳过删除，只有显式传入 `--allow-delete` 才允许应用删除。
 
-## 8. 误删恢复
+详细说明见 [Codex 安全工作流](docs/zh/CODEX_WORKFLOW.md)。
 
-误删后先查看最近删除记录，再恢复最新非删除版本：
+## 备份和恢复原理
+
+SafeVault 把变化后的文件内容流式写入不可变的 BLAKE3 对象库，同一内容只保存一次。
+SQLite 记录保护目录、版本、删除标记、事件和恢复点。恢复前会校验对象内容，并通过
+临时文件和原子替换写回目标位置。
+
+## 必须了解的限制
+
+- SafeVault 不是裸盘恢复工具，只能恢复开始保护后已经捕获的内容。
+- 无法恢复从未保存过的文件，也无法保证恢复 SSD TRIM 后的磁盘块。
+- `safevault run` 防止命令直接改动原项目，但不是恶意代码沙箱。
+- watcher 是尽力而为机制，已经完成的版本才是恢复依据。
+- v1.0.0 的智能保留只做规划和 dry-run，不会静默删除历史版本。
+- 本地对象库无法防止整块磁盘损坏，应把导出备份放到其他设备。
+
+## 文档导航
+
+不要逐个翻找文件名。进入 [文档中心](docs/README.md)，按“安装、日常使用、恢复、
+常见问题、高级功能”查找即可。
+
+## 开发与发布检查
 
 ```bash
-safevault deleted --since 24h
-safevault restore ~/Projects/myapp/file.py --latest
+ruff check .
+mypy src
+pytest -q
+python -m safevault --help
+bash scripts/release_check.sh
 ```
 
-完整步骤见 [恢复手册](docs/zh/RECOVERY_PLAYBOOK.md)。
-
-## 9. 导出/导入备份
-
-导出备份应保存到离机位置：
-
-```bash
-safevault export --output /external/safevault-export.tar.gz --gzip
-safevault import --input /external/safevault-export.tar.gz --target-home /tmp/safevault-imported --dry-run
-safevault import --input /external/safevault-export.tar.gz --target-home /tmp/safevault-imported --confirm
-```
-
-GUI 导入同样先 dry-run。确认导入时取消 dry-run，输入 `IMPORT`；如需覆盖目标，
-还要输入 `OVERWRITE`。
-
-## 10. 常见问题
-
-见 [FAQ](docs/zh/FAQ.md)、[自动保护模式](docs/zh/auto-protection.md) 和
-[故障排除](docs/zh/TROUBLESHOOTING.md)。
-
-## 11. 安全限制
-
-SafeVault 的安全模型见 [安全模型](docs/zh/SAFETY_MODEL.md)。核心原则是：
-不信任 diff、导入 archive 和外部 symlink placeholder；破坏性操作需要 dry-run
-或 confirm；对象内容在读取和恢复前校验 hash。
-
-## 12. 版本状态
-
-当前版本是 `0.2.0rc1`，是 release candidate，不是 stable/final。
+当前稳定版本为 `1.0.0`。版本变化见 [CHANGELOG.md](CHANGELOG.md) 和
+[v1.0.0 发布说明](docs/releases/v1.0.0.md)。

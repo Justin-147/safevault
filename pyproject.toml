@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "safevault"
-version = "0.2.0rc1"
-description = "Local file protection, versioned snapshots, and sandboxed command runner"
+version = "1.0.0"
+description = "Continuous local file protection, recovery, and safe AI coding workflows"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -47,11 +47,20 @@ safevault = "safevault.cli:app"
 [tool.hatch.build.targets.wheel]
 packages = ["src/safevault"]
 
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/.github",
+  "/AGENTS.md",
+  "/docs/dev",
+]
+
 [tool.hatch.build.targets.wheel.force-include]
 "README.zh-CN.md" = "safevault/ui/docs/README.zh-CN.md"
 "docs/README.md" = "safevault/ui/docs/README.md"
 "docs/INSTALL_EN.md" = "safevault/ui/docs/INSTALL_EN.md"
 "docs/INSTALL_ZH.md" = "safevault/ui/docs/INSTALL_ZH.md"
+"docs/FAQ_EN.md" = "safevault/ui/docs/FAQ_EN.md"
+"docs/FAQ_ZH.md" = "safevault/ui/docs/FAQ_ZH.md"
 "docs/USER_GUIDE_EN.md" = "safevault/ui/docs/USER_GUIDE_EN.md"
 "docs/USER_GUIDE_ZH.md" = "safevault/ui/docs/USER_GUIDE_ZH.md"
 "docs/zh" = "safevault/ui/docs/zh"

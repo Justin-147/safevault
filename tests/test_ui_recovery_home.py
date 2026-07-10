@@ -36,7 +36,7 @@ def test_recovery_home_shows_recent_deleted_and_modified(
         response = client.get("/", params={"token": TOKEN})
 
     assert response.status_code == 200
-    assert "SafeVault 正在保护你的文件" in response.text
+    assert "SafeVault 后台保护未运行" in response.text
     assert "recover-home.txt" in response.text
     assert "CONFIRM" in response.text
 
@@ -68,7 +68,7 @@ def test_recovery_home_searches_files(sv_home: Path, project: Path) -> None:
 
     assert response.status_code == 200
     assert "search-home.txt" in response.text
-    assert "Versions" in response.text
+    assert "查看历史" in response.text
 
 
 def test_dashboard_displays_daemon_and_backup_details(
@@ -83,11 +83,13 @@ def test_dashboard_displays_daemon_and_backup_details(
         response = client.get("/", params={"token": TOKEN})
 
     assert response.status_code == 200
-    assert "Watched roots" in response.text
-    assert "Paused roots" in response.text
-    assert "Missing roots" in response.text
-    assert "Next backup due" in response.text
-    assert "Daemon message" in response.text
+    assert "正在监听" in response.text
+    assert "已暂停" in response.text
+    assert "目录不可用" in response.text
+    assert "下次备份" in response.text
+    assert "后台消息" in response.text
+    assert "本地存储" in response.text
+    assert "100 GB" in response.text
 
 
 def test_one_click_restore_uses_normal_confirmation(sv_home: Path, project: Path) -> None:

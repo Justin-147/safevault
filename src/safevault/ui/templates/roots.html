@@ -1,32 +1,31 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Roots</h1>
+<h1>保护目录</h1>
 <form method="post" action="/roots/add" class="panel">
-  <h2>Add Protected Root</h2>
-  <label>Path <input name="path" required></label>
-  <label>Profile
+  <h2>添加保护文件夹</h2>
+  <label>路径 <input name="path" required></label>
+  <label>类型
     <select name="profile">
       {% for profile in profiles %}<option value="{{ profile }}">{{ profile }}</option>{% endfor %}
     </select>
   </label>
-  <button type="submit">Protect Root</button>
+  <button type="submit">开始保护</button>
 </form>
 <table>
-  <thead><tr><th>ID</th><th>Path</th><th>Profile</th><th>Exists</th><th>Active</th><th>Deleted</th><th>Last snapshot</th><th></th></tr></thead>
+  <thead><tr><th>ID</th><th>路径</th><th>类型</th><th>可用</th><th>现有文件</th><th>已删除</th><th>最近保护点</th><th></th></tr></thead>
   <tbody>
   {% for root in roots %}
   <tr>
     <td>{{ root.id }}</td>
     <td>{{ root.path }}</td>
     <td>{{ root.profile }}</td>
-    <td>{{ "yes" if root.exists else "no" }}</td>
+    <td>{{ "是" if root.exists else "否" }}</td>
     <td>{{ root.active_count }}</td>
     <td>{{ root.deleted_count }}</td>
     <td>{{ root.last_snapshot or "" }}</td>
-    <td><a href="/roots/{{ root.id }}">Open</a></td>
+    <td><a href="/roots/{{ root.id }}">打开</a></td>
   </tr>
   {% endfor %}
   </tbody>
 </table>
 {% endblock %}
-

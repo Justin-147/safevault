@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from safevault.backup import run_backup
-from safevault.daemon import get_daemon_status
+from safevault.daemon import get_daemon_status, request_daemon_stop
 from safevault.errors import SafeVaultError
 from safevault.protection import list_protection, pause_protected_root, resume_protected_root
 from safevault.snapshot import create_snapshot
@@ -34,7 +34,7 @@ def run_tray(*, open_ui: bool = False, check: bool = False) -> None:
     if open_ui:
         open_safevault_ui()
     status = get_daemon_status()
-    if status.status != "running":
+    if status.status != "running" and not status.lock_exists:
         _spawn_safevault(["daemon", "run"])
     icon = pystray.Icon(
         "SafeVault",
@@ -51,7 +51,7 @@ def run_tray(*, open_ui: bool = False, check: bool = False) -> None:
                 lambda _icon, _item: pause_all_roots("30m"),
             ),
             pystray.MenuItem("Resume Protection", lambda _icon, _item: resume_all_roots()),
-            pystray.MenuItem("Quit", lambda icon, _item: icon.stop()),
+            pystray.MenuItem("Quit SafeVault", lambda icon, _item: quit_safevault(icon)),
         ),
     )
     icon.run()
@@ -91,6 +91,13 @@ def resume_all_roots() -> None:
     for policy in list_protection():
         if policy.enabled:
             resume_protected_root(Path(policy.root_path))
+
+
+def quit_safevault(icon) -> None:
+    """Stop background protection and close the tray for the current session."""
+
+    request_daemon_stop()
+    icon.stop()
 
 
 def _spawn_safevault(args: list[str]) -> None:

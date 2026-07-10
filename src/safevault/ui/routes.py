@@ -57,6 +57,7 @@ def build_router() -> APIRouter:
                     "onboarding.html",
                     token,
                     candidates=services.onboarding_candidates_for_ui(),
+                    startup_supported=services.startup_supported(),
                 )
             status = services.get_dashboard_status()
             return _render(
@@ -84,6 +85,7 @@ def build_router() -> APIRouter:
             "onboarding.html",
             token,
             candidates=services.onboarding_candidates_for_ui(),
+            startup_supported=services.startup_supported(),
         )
 
     @router.post("/onboarding", response_class=HTMLResponse)
@@ -92,6 +94,7 @@ def build_router() -> APIRouter:
         backup_target: str = Form(""),
         backup_schedule: str = Form("daily"),
         startup_enabled: bool = Form(False),
+        startup_configured: bool = Form(False),
         skip_roots: bool = Form(False),
         token: str = Depends(require_token),
     ) -> HTMLResponse:
@@ -105,6 +108,7 @@ def build_router() -> APIRouter:
                 backup_target=backup_target,
                 backup_schedule=backup_schedule,
                 startup_enabled=startup_enabled,
+                startup_configured=startup_configured,
                 skip_roots=skip_roots,
             )
             message = (
@@ -133,6 +137,7 @@ def build_router() -> APIRouter:
             "onboarding.html",
             token,
             candidates=services.onboarding_candidates_for_ui(),
+            startup_supported=services.startup_supported(),
             error=error,
         )
 
@@ -497,24 +502,40 @@ def build_router() -> APIRouter:
     def help_page(request: Request, token: str = Depends(require_token)) -> HTMLResponse:
         return _render(request, "help.html", token)
 
+    @router.get("/docs/{doc_name}", response_class=PlainTextResponse)
+    def core_doc(
+        doc_name: str, request: Request, token: str = Depends(require_token)
+    ) -> PlainTextResponse:
+        _ = (request, token)
+        allowed = {
+            "INSTALL_EN.md",
+            "INSTALL_ZH.md",
+            "USER_GUIDE_EN.md",
+            "USER_GUIDE_ZH.md",
+            "FAQ_EN.md",
+            "FAQ_ZH.md",
+        }
+        if doc_name not in allowed:
+            return PlainTextResponse("Not found", status_code=404)
+        path = Path.cwd() / "docs" / doc_name
+        if not path.is_file():
+            resource = files("safevault.ui").joinpath("docs", doc_name)
+            if not resource.is_file():
+                return PlainTextResponse("Not found", status_code=404)
+            return PlainTextResponse(resource.read_text(encoding="utf-8"))
+        return PlainTextResponse(path.read_text(encoding="utf-8"))
+
     @router.get("/docs/zh/{doc_name}", response_class=PlainTextResponse)
     def zh_doc(
         doc_name: str, request: Request, token: str = Depends(require_token)
     ) -> PlainTextResponse:
         _ = (request, token)
         allowed = {
-            "USER_MANUAL.md",
             "GUI_GUIDE.md",
             "RECOVERY_PLAYBOOK.md",
             "CODEX_WORKFLOW.md",
-            "FAQ.md",
             "TROUBLESHOOTING.md",
             "SAFETY_MODEL.md",
-            "auto-protection.md",
-            "daemon-tray.md",
-            "one-click-restore.md",
-            "automatic-backup.md",
-            "onboarding.md",
         }
         if doc_name not in allowed:
             return PlainTextResponse("Not found", status_code=404)

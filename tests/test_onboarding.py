@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -17,8 +18,11 @@ def test_first_open_shows_onboarding(sv_home: Path) -> None:
         response = client.get("/", params={"token": TOKEN})
 
     assert response.status_code == 200
-    assert "首次启动向导" in response.text
-    assert "Start SafeVault automatically with Windows" in response.text
+    assert "欢迎使用 SafeVault" in response.text
+    if os.name == "nt":
+        assert "随 Windows 自动启动 SafeVault" in response.text
+    else:
+        assert "随 Windows 自动启动 SafeVault" not in response.text
 
 
 def test_onboarding_completion_writes_config_and_initial_snapshot(
@@ -85,6 +89,7 @@ def test_onboarding_startup_option_installs_daemon_startup(
         "safevault.ui.services.install_user_startup",
         lambda *, daemon, tray: calls.append((daemon, tray)),
     )
+    monkeypatch.setattr("safevault.ui.services.startup_supported", lambda: True)
 
     with TestClient(create_app(token=TOKEN)) as client:
         client.get("/", params={"token": TOKEN})
@@ -100,6 +105,47 @@ def test_onboarding_startup_option_installs_daemon_startup(
     assert response.status_code == 200
     assert load_config().app.onboarding_completed is True
     assert calls == [(True, False)]
+
+
+def test_onboarding_unchecked_startup_removes_existing_entry(
+    sv_home: Path, monkeypatch
+) -> None:
+    calls = []
+    monkeypatch.setattr("safevault.ui.services.startup_supported", lambda: True)
+    monkeypatch.setattr(
+        "safevault.ui.services.uninstall_user_startup",
+        lambda *, daemon, tray: calls.append((daemon, tray)),
+    )
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        response = client.post(
+            "/onboarding",
+            data={
+                "backup_schedule": "manual",
+                "skip_roots": "true",
+                "startup_configured": "true",
+            },
+        )
+
+    assert response.status_code == 200
+    assert calls == [(True, False)]
+
+
+def test_onboarding_recommends_pictures_when_present(
+    sv_home: Path, tmp_path: Path, monkeypatch
+) -> None:
+    user_home = tmp_path / "user"
+    pictures = user_home / "Pictures"
+    pictures.mkdir(parents=True)
+    monkeypatch.setenv("USERPROFILE", str(user_home))
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        response = client.get("/", params={"token": TOKEN})
+
+    assert response.status_code == 200
+    assert str(pictures.resolve()) in response.text
+    assert f'value="{pictures.resolve()}" checked' in response.text
 
 
 def test_onboarding_requires_root_or_explicit_skip(sv_home: Path) -> None:

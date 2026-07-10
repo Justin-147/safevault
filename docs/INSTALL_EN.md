@@ -1,6 +1,6 @@
 # SafeVault Install Guide
 
-SafeVault 0.2.0rc1 is a release candidate for local continuous file protection.
+SafeVault 1.0.0 provides stable local continuous file protection.
 It keeps BLAKE3 object storage and SQLite metadata on the local machine.
 
 ## Install
@@ -34,8 +34,9 @@ powershell -ExecutionPolicy Bypass -File scripts\build_windows_installer.ps1
 
 The installer definition is `packaging/windows/SafeVaultSetup.iss` and produces
 `dist/SafeVaultSetup.exe`. The installer registers current-user Startup entries
-for the daemon by default, offers optional tray startup, and launches the
-first-run wizard after install.
+for the daemon and tray by default, starts background protection for the current
+session, and launches the first-run wizard. Both Startup tasks can be disabled
+during setup.
 
 ## First Run
 

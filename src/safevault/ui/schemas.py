@@ -14,6 +14,8 @@ class DashboardStatus:
     active_files_count: int
     deleted_files_count: int
     object_store_size: int
+    object_store_size_display: str
+    max_vault_size_gb: int
     latest_sandbox: dict[str, str] | None
     daemon_status: str
     watched_roots: int

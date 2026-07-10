@@ -18,7 +18,13 @@ $setupExe = Join-Path $root "dist\SafeVaultSetup.exe"
 if (-not $SkipAppBuild) {
     Write-Step "Building SafeVault application bundle"
     $entryPoint = Join-Path $root "src\safevault\__main__.py"
-    & $PyInstaller --clean --name safevault --collect-all safevault --console $entryPoint
+    & $PyInstaller --clean --noconfirm --name safevault --collect-all safevault `
+        --collect-all fastapi --collect-all starlette --collect-all uvicorn `
+        --collect-all jinja2 --collect-all multipart --collect-all pystray `
+        --collect-all PIL --console $entryPoint
+    if ($LASTEXITCODE -ne 0) {
+        throw "PyInstaller failed with exit code $LASTEXITCODE"
+    }
 }
 
 if (-not (Test-Path -LiteralPath $distApp)) {
@@ -26,7 +32,21 @@ if (-not (Test-Path -LiteralPath $distApp)) {
 }
 
 Write-Step "Building SafeVaultSetup.exe"
-& $InnoSetupCompiler $setupScript
+$compilerCommand = Get-Command $InnoSetupCompiler -ErrorAction SilentlyContinue
+if ($null -ne $compilerCommand) {
+    $compilerPath = $compilerCommand.Source
+} else {
+    $standardCompiler = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+    if (Test-Path -LiteralPath $standardCompiler) {
+        $compilerPath = $standardCompiler
+    } else {
+        throw "Inno Setup compiler not found: $InnoSetupCompiler"
+    }
+}
+& $compilerPath $setupScript
+if ($LASTEXITCODE -ne 0) {
+    throw "Inno Setup failed with exit code $LASTEXITCODE"
+}
 
 if (-not (Test-Path -LiteralPath $setupExe)) {
     throw "Expected installer was not created: $setupExe"

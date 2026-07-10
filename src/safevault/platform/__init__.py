@@ -1,1 +1,0 @@
-"""Platform helpers for SafeVault."""

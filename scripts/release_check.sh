@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+AUDIT_TMP="$(mktemp -d)"
+cleanup() {
+  rm -rf "$AUDIT_TMP"
+}
+trap cleanup EXIT
+export SAFEVAULT_HOME="$AUDIT_TMP/home"
+
 ruff check .
 mypy src
 pytest -q
@@ -11,7 +18,7 @@ python -m safevault tray --check
 python - <<'PY'
 from safevault import __version__
 
-assert __version__ == "0.2.0rc1"
+assert __version__ == "1.0.0"
 print("version ok")
 PY
 python - <<'PY'
@@ -40,15 +47,15 @@ required = [
     "safevault/ui/docs/README.md",
     "safevault/ui/docs/INSTALL_EN.md",
     "safevault/ui/docs/INSTALL_ZH.md",
+    "safevault/ui/docs/FAQ_EN.md",
+    "safevault/ui/docs/FAQ_ZH.md",
     "safevault/ui/docs/USER_GUIDE_EN.md",
     "safevault/ui/docs/USER_GUIDE_ZH.md",
     "safevault/ui/docs/zh/GUI_GUIDE.md",
-    "safevault/ui/docs/zh/USER_MANUAL.md",
-    "safevault/ui/docs/zh/auto-protection.md",
-    "safevault/ui/docs/zh/daemon-tray.md",
-    "safevault/ui/docs/zh/one-click-restore.md",
-    "safevault/ui/docs/zh/automatic-backup.md",
-    "safevault/ui/docs/zh/onboarding.md",
+    "safevault/ui/docs/zh/RECOVERY_PLAYBOOK.md",
+    "safevault/ui/docs/zh/CODEX_WORKFLOW.md",
+    "safevault/ui/docs/zh/TROUBLESHOOTING.md",
+    "safevault/ui/docs/zh/SAFETY_MODEL.md",
 ]
 missing = [name for name in required if name not in names]
 if missing:

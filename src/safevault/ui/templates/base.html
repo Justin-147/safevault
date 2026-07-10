@@ -1,25 +1,25 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SafeVault Local UI</title>
+  <title>SafeVault 恢复中心</title>
   <link rel="stylesheet" href="/static/safevault.css">
 </head>
 <body>
   <header>
     <div>
-      <strong>SafeVault Local UI</strong>
+      <strong>SafeVault 恢复中心</strong>
       <span class="warning">{{ local_warning }}</span>
     </div>
     <nav>
-      <a href="/">Dashboard</a>
-      <a href="/roots">Roots</a>
-      <a href="/deleted">Deleted</a>
-      <a href="/sandboxes">Sandboxes</a>
-      <a href="/maintenance">Maintenance</a>
-      <a href="/export-import">Export/Import</a>
-      <a href="/help">Help</a>
+      <a href="/">恢复首页</a>
+      <a href="/roots">保护目录</a>
+      <a href="/deleted">最近删除</a>
+      <a href="/sandboxes">AI 沙箱</a>
+      <a href="/maintenance">维护</a>
+      <a href="/export-import">导出/导入</a>
+      <a href="/help">帮助</a>
     </nav>
   </header>
   <main>
@@ -27,7 +27,5 @@
     {% if error %}<p class="error">{{ error }}</p>{% endif %}
     {% block content %}{% endblock %}
   </main>
-  <script src="/static/safevault.js"></script>
 </body>
 </html>
-

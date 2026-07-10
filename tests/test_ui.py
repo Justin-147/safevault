@@ -80,6 +80,15 @@ def test_ui_requires_token_sets_cookie_and_serves_pages(sv_home: Path) -> None:
         assert doc.status_code == 200
         assert "不做裸盘恢复" in doc.text
 
+        guide = client.get("/docs/USER_GUIDE_ZH.md")
+        assert guide.status_code == 200
+        assert "SafeVault 用户指南" in guide.text
+
+        help_page = client.get("/help")
+        assert "安装与首次设置" in help_page.text
+        assert "/docs/FAQ_ZH.md" in help_page.text
+        assert "USER_MANUAL.md" not in help_page.text
+
 
 def test_ui_post_requires_token(sv_home: Path, project: Path) -> None:
     with TestClient(create_app(token=TOKEN)) as client:
@@ -285,8 +294,8 @@ def test_ui_versions_restore_and_deleted_page(sv_home: Path, project: Path) -> N
 
         versions = client.get("/versions", params={"file": str(file_path)})
         assert versions.status_code == 200
-        assert "Recovery Center" in versions.text
-        assert "Restore point" in versions.text
+        assert "恢复中心" in versions.text
+        assert "恢复点" in versions.text
         assert "note.txt" in versions.text
         assert "Hash" not in versions.text
         assert "<th>Version</th>" not in versions.text

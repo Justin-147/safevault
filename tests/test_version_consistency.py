@@ -13,7 +13,7 @@ def test_version_strings_are_consistent() -> None:
     readme = (root / "README.md").read_text(encoding="utf-8")
     readme_zh = (root / "README.zh-CN.md").read_text(encoding="utf-8")
 
-    assert pyproject["project"]["version"] == __version__ == "0.2.0rc1"
-    assert "## 0.2.0rc1" in changelog
-    assert "v0.2.0-rc1" in readme
-    assert "0.2.0rc1" in readme_zh
+    assert pyproject["project"]["version"] == __version__ == "1.0.0"
+    assert "## 1.0.0" in changelog
+    assert "v1.0.0" in readme
+    assert "1.0.0" in readme_zh

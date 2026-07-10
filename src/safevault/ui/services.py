@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -36,7 +37,7 @@ from safevault.restore import restore_file
 from safevault.retention import RetentionPlan, build_retention_plan
 from safevault.sandbox import apply_sandbox, get_sandbox, list_sandboxes
 from safevault.snapshot import create_snapshot
-from safevault.startup import install_user_startup
+from safevault.startup import install_user_startup, uninstall_user_startup
 from safevault.ui.schemas import (
     DashboardStatus,
     DeletedEntry,
@@ -59,7 +60,17 @@ def _object_store_size() -> int:
     return total
 
 
+def _format_bytes(value: int) -> str:
+    size = float(value)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1024 or unit == "TB":
+            return f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} B"
+        size /= 1024
+    return f"{value} B"
+
+
 def get_dashboard_status() -> DashboardStatus:
+    config = load_config()
     doctor = run_doctor(deep=False)
     verify = run_verify(deep=False)
     conn = connect()
@@ -95,6 +106,7 @@ def get_dashboard_status() -> DashboardStatus:
         }
     daemon = get_daemon_status()
     backup = get_backup_status()
+    object_store_size = _object_store_size()
     health_summary = "OK" if doctor.healthy and verify.healthy else "Warning"
     return DashboardStatus(
         version=__version__,
@@ -105,7 +117,9 @@ def get_dashboard_status() -> DashboardStatus:
         snapshots_count=snapshots_count,
         active_files_count=active_files_count,
         deleted_files_count=deleted_files_count,
-        object_store_size=_object_store_size(),
+        object_store_size=object_store_size,
+        object_store_size_display=_format_bytes(object_store_size),
+        max_vault_size_gb=config.retention.max_vault_size_gb,
         latest_sandbox=latest_sandbox,
         daemon_status=daemon.status,
         watched_roots=daemon.watched_roots,
@@ -174,6 +188,10 @@ def should_show_onboarding() -> bool:
     return not load_config().app.onboarding_completed
 
 
+def startup_supported() -> bool:
+    return os.name == "nt"
+
+
 def onboarding_candidates_for_ui() -> list[dict[str, object]]:
     return [
         {
@@ -192,10 +210,13 @@ def complete_onboarding_from_ui(
     backup_target: str,
     backup_schedule: str,
     startup_enabled: bool = False,
+    startup_configured: bool = False,
     skip_roots: bool = False,
 ) -> dict[str, list[int]]:
     created_roots: list[int] = []
     snapshots: list[int] = []
+    if startup_enabled and not startup_supported():
+        raise SafeVaultError("Windows startup integration is only supported on Windows")
     selected_roots = validate_onboarding_inputs(
         roots=roots,
         backup_target=backup_target,
@@ -220,6 +241,8 @@ def complete_onboarding_from_ui(
         configure_backup(Path(backup_target), _backup_schedule_for_ui(backup_schedule))
     if startup_enabled:
         install_user_startup(daemon=True, tray=False)
+    elif startup_configured and startup_supported():
+        uninstall_user_startup(daemon=True, tray=False)
     config = load_config()
     save_config(replace(config, app=replace(config.app, onboarding_completed=True)))
     return {"roots": created_roots, "snapshots": snapshots}
@@ -569,24 +592,27 @@ def _recovery_label(
     *, reason: str | None, restore_label: str | None, deleted: bool
 ) -> str:
     if deleted:
-        return "Deleted file marker"
+        return "文件删除记录"
     if restore_label:
         return restore_label
     labels = {
-        "before-ai-change": "Before AI modification",
-        "after-ai-change": "After AI modification",
-        "after-large-change": "After large change",
-        "automatic-save": "Automatic save",
-        "watcher-change": "Automatic save",
-        "onboarding-initial": "Initial protection point",
-        "pre-daemon-start": "Startup safety point",
-        "daily-checkpoint": "Daily checkpoint",
+        "before-ai-change": "AI 修改前",
+        "after-ai-change": "AI 修改后",
+        "after-large-change": "大批量修改后",
+        "emergency-mass-change": "紧急保护点（疑似异常批量修改）",
+        "automatic-save": "自动保存",
+        "watcher-change": "自动保存",
+        "scheduled-hourly": "每小时保护点",
+        "scheduled-daily": "每日保护点",
+        "onboarding-initial": "首次保护点",
+        "pre-daemon-start": "启动保护点",
+        "daily-checkpoint": "每日保护点",
     }
     if reason in labels:
         return labels[reason]
     if reason and "checkpoint" in reason:
-        return "Checkpoint"
-    return "Previous version"
+        return "重要保护点"
+    return "历史版本"
 
 
 def restore_from_ui(

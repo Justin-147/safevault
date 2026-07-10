@@ -25,7 +25,7 @@ def main() -> None:
         with TestClient(create_app(token=token)) as client:
             first = client.get("/", params={"token": token})
             assert first.status_code == 200
-            assert "首次启动向导" in first.text
+            assert "欢迎使用 SafeVault" in first.text
             completed = client.post(
                 "/onboarding",
                 data={"roots": str(desktop), "backup_schedule": "manual"},

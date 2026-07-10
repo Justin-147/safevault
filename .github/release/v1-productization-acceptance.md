@@ -1,18 +1,21 @@
 # SafeVault v1 Productization Acceptance
 
 This checklist tracks the productization upgrade from engineering snapshot tool
-to continuous local file protection.
+to continuous local file protection. It is maintainer release material, not an
+end-user guide.
 
 ## Installation
 
 - Windows installer recipe produces `SafeVaultSetup.exe`.
 - Installer registers current-user daemon Startup entry by default.
-- Tray Startup entry remains optional.
+- Installer registers the tray Startup entry by default; both tasks remain
+  user-selectable.
+- Installer starts background protection for the current session.
 - First-run wizard opens after install.
 
 ## Protection
 
-- Onboarding can protect Desktop, Documents, Pictures, Projects, or custom
+- Onboarding recommends Desktop, Documents, Pictures, Projects, or custom
   folders.
 - The daemon performs startup scans and watcher-triggered automatic saves.
 - Users do not need to manage snapshot IDs for normal recovery.
@@ -47,3 +50,8 @@ mypy src
 pytest -q
 python -m safevault --help
 ```
+
+## Final Version
+
+- Package, installer, documentation, changelog, and release notes use `1.0.0`.
+- Smart retention remains non-destructive planning/dry-run in v1.0.0.

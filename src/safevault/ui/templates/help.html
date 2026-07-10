@@ -1,15 +1,27 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Help</h1>
+<h1>帮助</h1>
+
+<h2>中文用户</h2>
 <ul>
-  <li><a href="/docs/zh/USER_MANUAL.md">中文快速开始</a></li>
-  <li><a href="/docs/zh/GUI_GUIDE.md">中文 GUI 指南</a></li>
-  <li><a href="/docs/zh/RECOVERY_PLAYBOOK.md">恢复手册</a></li>
-  <li><a href="/docs/zh/CODEX_WORKFLOW.md">Codex 工作流</a></li>
-  <li><a href="/docs/zh/FAQ.md">FAQ</a></li>
+  <li><a href="/docs/INSTALL_ZH.md">安装与首次设置</a></li>
+  <li><a href="/docs/USER_GUIDE_ZH.md">日常使用指南</a></li>
+  <li><a href="/docs/zh/RECOVERY_PLAYBOOK.md">误删和事故恢复</a></li>
+  <li><a href="/docs/FAQ_ZH.md">常见问题</a></li>
+</ul>
+
+<h2>高级功能</h2>
+<ul>
+  <li><a href="/docs/zh/GUI_GUIDE.md">GUI 详细说明</a></li>
+  <li><a href="/docs/zh/CODEX_WORKFLOW.md">Codex 安全工作流</a></li>
   <li><a href="/docs/zh/TROUBLESHOOTING.md">故障排除</a></li>
   <li><a href="/docs/zh/SAFETY_MODEL.md">安全模型</a></li>
 </ul>
-<p>Documentation files are shipped in the repository under <code>docs/zh</code>.</p>
-{% endblock %}
 
+<h2>English</h2>
+<ul>
+  <li><a href="/docs/INSTALL_EN.md">Install Guide</a></li>
+  <li><a href="/docs/USER_GUIDE_EN.md">User Guide</a></li>
+  <li><a href="/docs/FAQ_EN.md">FAQ</a></li>
+</ul>
+{% endblock %}

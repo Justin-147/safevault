@@ -1,5 +1,5 @@
 #define MyAppName "SafeVault"
-#define MyAppVersion "0.2.0rc1"
+#define MyAppVersion "1.0.0"
 #define MyAppPublisher "SafeVault"
 #define MyAppExeName "safevault.exe"
 
@@ -30,11 +30,15 @@ Name: "{userstartup}\SafeVault Tray"; Filename: "{app}\{#MyAppExeName}"; Paramet
 
 [Tasks]
 Name: "startup"; Description: "Start SafeVault automatically with Windows"; GroupDescription: "Startup:"; Flags: checkedonce
-Name: "tray"; Description: "Start SafeVault tray with Windows"; GroupDescription: "Startup:"; Flags: unchecked
+Name: "tray"; Description: "Start SafeVault tray with Windows"; GroupDescription: "Startup:"; Flags: checkedonce
 
 [Run]
+Filename: "{app}\{#MyAppExeName}"; Parameters: "daemon run"; Description: "Start SafeVault background protection"; Flags: nowait postinstall skipifsilent runhidden; Tasks: startup
+Filename: "{app}\{#MyAppExeName}"; Parameters: "tray"; Description: "Start SafeVault tray"; Flags: nowait postinstall skipifsilent; Tasks: tray
 Filename: "{app}\{#MyAppExeName}"; Parameters: "ui --open"; Description: "Launch SafeVault first-run wizard"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: files; Name: "{userstartup}\SafeVault Daemon.lnk"
 Type: files; Name: "{userstartup}\SafeVault Tray.lnk"
+Type: files; Name: "{userstartup}\SafeVault Daemon.cmd"
+Type: files; Name: "{userstartup}\SafeVault Tray.cmd"

@@ -1,17 +1,30 @@
 {% extends "base.html" %}
 {% block content %}
+{% if status and status.daemon_status == "running" and status.watched_roots > 0 %}
 <h1>SafeVault 正在保护你的文件</h1>
+{% elif status and status.paused_roots > 0 %}
+<h1>SafeVault 自动保护已暂停</h1>
+{% elif status and status.missing_roots > 0 %}
+<h1>部分保护目录当前不可用</h1>
+{% elif status and status.roots_count == 0 %}
+<h1>请选择需要保护的文件夹</h1>
+{% elif status and status.daemon_status == "running" %}
+<h1>SafeVault 已启动，正在等待可保护目录</h1>
+{% else %}
+<h1>SafeVault 后台保护未运行</h1>
+{% endif %}
 {% if status %}
 <section class="status-strip">
-  <div><strong>Protected roots</strong><span>{{ status.roots_count }}</span></div>
-  <div><strong>Watched roots</strong><span>{{ status.watched_roots }}</span></div>
-  <div><strong>Paused roots</strong><span>{{ status.paused_roots }}</span></div>
-  <div><strong>Missing roots</strong><span>{{ status.missing_roots }}</span></div>
-  <div><strong>Daemon</strong><span>{{ status.daemon_status }}</span></div>
-  <div><strong>Last snapshot</strong><span>{{ status.last_snapshot or "none" }}</span></div>
-  <div><strong>Last backup</strong><span>{{ status.last_backup or "not configured" }}</span></div>
-  <div><strong>Next backup due</strong><span>{{ status.next_backup_due or "not scheduled" }}</span></div>
-  <div><strong>Health</strong><span>{{ status.health_summary }}</span></div>
+  <div><strong>保护目录</strong><span>{{ status.roots_count }}</span></div>
+  <div><strong>正在监听</strong><span>{{ status.watched_roots }}</span></div>
+  <div><strong>已暂停</strong><span>{{ status.paused_roots }}</span></div>
+  <div><strong>目录不可用</strong><span>{{ status.missing_roots }}</span></div>
+  <div><strong>后台状态</strong><span>{{ status.daemon_status }}</span></div>
+  <div><strong>最近保护点</strong><span>{{ status.last_snapshot or "暂无" }}</span></div>
+  <div><strong>最近外部备份</strong><span>{{ status.last_backup or "尚未配置" }}</span></div>
+  <div><strong>下次备份</strong><span>{{ status.next_backup_due or "未计划" }}</span></div>
+  <div><strong>本地存储</strong><span>{{ status.object_store_size_display }} / {{ status.max_vault_size_gb }} GB</span></div>
+  <div><strong>健康状态</strong><span>{{ status.health_summary }}</span></div>
 </section>
 {% endif %}
 
@@ -20,7 +33,7 @@
     <section class="panel">
       <h2>最近删除的文件</h2>
       <table>
-        <tr><th>Path</th><th>Detected</th><th>Action</th></tr>
+        <tr><th>文件</th><th>删除时间</th><th>操作</th></tr>
         {% for entry in recent_deleted %}
         <tr>
           <td>{{ entry.rel_path }}<br><small>{{ entry.root_path }}</small></td>
@@ -30,12 +43,12 @@
               <input type="hidden" name="file" value="{{ entry.absolute_path }}">
               <input type="hidden" name="mode" value="latest">
               <input type="hidden" name="confirmation" value="CONFIRM">
-              <button type="submit" onclick="return confirm('Restore this file to its original location?')">Restore</button>
+              <button type="submit" onclick="return confirm('恢复到原位置？')">恢复</button>
             </form>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="3">No recent deleted files.</td></tr>
+        <tr><td colspan="3">最近没有删除记录。</td></tr>
         {% endfor %}
       </table>
     </section>
@@ -43,7 +56,7 @@
     <section class="panel">
       <h2>最近修改</h2>
       <table>
-        <tr><th>Path</th><th>Event</th><th>Detected</th></tr>
+        <tr><th>文件</th><th>变化</th><th>时间</th></tr>
         {% for entry in recent_modified %}
         <tr>
           <td>{{ entry.rel_path }}<br><small>{{ entry.root_path }}</small></td>
@@ -51,7 +64,7 @@
           <td>{{ entry.detected_at }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="3">No recent modified files.</td></tr>
+        <tr><td colspan="3">最近没有修改记录。</td></tr>
         {% endfor %}
       </table>
     </section>
@@ -59,7 +72,7 @@
     <section class="panel">
       <h2>恢复时间线</h2>
       <table>
-        <tr><th>Time</th><th>Change</th><th>Path</th></tr>
+        <tr><th>时间</th><th>恢复点</th><th>文件</th></tr>
         {% for item in timeline %}
         <tr>
           <td>{{ item.occurred_at }}</td>
@@ -67,7 +80,7 @@
           <td>{{ item.rel_path }}<br><small>{{ item.root_path }}</small></td>
         </tr>
         {% else %}
-        <tr><td colspan="3">No timeline entries yet.</td></tr>
+        <tr><td colspan="3">还没有恢复时间线记录。</td></tr>
         {% endfor %}
       </table>
     </section>
@@ -75,21 +88,21 @@
     <section class="panel">
       <h2>搜索文件</h2>
       <form method="get" action="/">
-        <input name="q" value="{{ search_query }}" placeholder="file name or path">
-        <label><input type="checkbox" name="deleted" value="true" {% if search_deleted %}checked{% endif %}> Deleted only</label>
-        <button type="submit">Search</button>
+        <input name="q" value="{{ search_query }}" placeholder="文件名或路径">
+        <label><input type="checkbox" name="deleted" value="true" {% if search_deleted %}checked{% endif %}> 仅已删除</label>
+        <button type="submit">搜索</button>
       </form>
       {% if search_query %}
       <table>
-        <tr><th>Path</th><th>Status</th><th>Action</th></tr>
+        <tr><th>文件</th><th>状态</th><th>操作</th></tr>
         {% for item in search_results %}
         <tr>
           <td>{{ item.rel_path }}<br><small>{{ item.root_path }}</small></td>
           <td>{{ item.status }}</td>
-          <td><a href="/versions?file={{ item.absolute_path }}">Versions</a></td>
+          <td><a href="/versions?file={{ item.absolute_path }}">查看历史</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="3">No matches.</td></tr>
+        <tr><td colspan="3">没有匹配结果。</td></tr>
         {% endfor %}
       </table>
       {% endif %}
@@ -98,12 +111,12 @@
 
   <aside class="panel side-panel">
     <h2>快捷操作</h2>
-    <p><a href="/roots">Add folder</a></p>
-    <p><a href="/maintenance">Run verify</a></p>
+    <p><a href="/roots">添加保护文件夹</a></p>
+    <p><a href="/maintenance">运行健康检查</a></p>
     <form method="post" action="/backup/run">
-      <button type="submit">Backup now</button>
+      <button type="submit">立即备份</button>
     </form>
-    <p><a href="/export-import">Export / Import</a></p>
+    <p><a href="/export-import">导出 / 导入</a></p>
     {% if backup_status and not backup_status.enabled %}
     <p class="warning">还没有设置外部备份目录。如果本机磁盘损坏，SafeVault 本地对象库也可能丢失。</p>
     {% endif %}
@@ -111,7 +124,7 @@
     <p class="warning">后台保护未运行。文件变化不会被自动快照。</p>
     {% endif %}
     {% if status and status.last_daemon_message %}
-    <p><strong>Daemon message</strong><br>{{ status.last_daemon_message }}</p>
+    <p><strong>后台消息</strong><br>{{ status.last_daemon_message }}</p>
     {% endif %}
   </aside>
 </section>

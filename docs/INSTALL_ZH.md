@@ -1,6 +1,6 @@
 # SafeVault 安装指南
 
-SafeVault 0.2.0rc1 是本地连续文件保护的 release candidate。它继续使用
+SafeVault 1.0.0 提供稳定的本地连续文件保护。它继续使用
 BLAKE3 对象库和 SQLite 元数据，不会安装内核驱动，也不会开放远程管理端口。
 
 ## 安装
@@ -31,8 +31,9 @@ powershell -ExecutionPolicy Bypass -File scripts\build_windows_installer.ps1
 ```
 
 安装器定义在 `packaging/windows/SafeVaultSetup.iss`，输出
-`dist/SafeVaultSetup.exe`。安装器默认注册当前用户的 daemon 开机启动项，
-可选注册 tray，并在安装完成后打开首次启动向导。
+`dist/SafeVaultSetup.exe`。安装器默认注册当前用户的 daemon 和 tray 开机
+启动项，立即启动本次会话的后台保护，并在安装完成后打开首次启动向导。
+两个开机启动选项都可以在安装时取消。
 
 ## 第一次启动
 
