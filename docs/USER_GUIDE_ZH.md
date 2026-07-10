@@ -14,7 +14,7 @@ safevault backup status
 GUI 首页会显示受保护目录、daemon 健康状态、最近删除、最近修改、恢复时间线、
 搜索和一键恢复入口。
 
-状态栏还会显示本地对象库用量和配置的空间预算。v1.0.1 的智能保留只提供规划
+状态栏还会显示本地对象库用量和配置的空间预算。v1.0.2 的智能保留只提供规划
 与 dry-run，因此 SafeVault 不会静默删除历史版本。
 
 ## 保护文件夹
@@ -72,7 +72,9 @@ safevault protect resume C:\Users\you\Documents
 safevault protect remove C:\Users\you\Documents --confirm
 ```
 
-暂停和移除保护不会删除已经保存的快照或对象内容。
+“停止自动保护”只停止监听，已有快照和历史仍可恢复。“彻底移除历史记录”则会删除
+数据库中的版本和恢复索引，之后无法通过 SafeVault 恢复；该操作会要求预览并输入
+目录 ID 或完整路径确认。
 
 托盘中的“退出 SafeVault”会停止当前会话的 daemon、恢复首页和托盘。Windows 开机
 启动设置决定下次登录时是否重新开始保护。

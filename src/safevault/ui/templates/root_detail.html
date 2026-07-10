@@ -18,12 +18,20 @@
   </form>
 </div>
 <section class="panel">
-  <h2>取消保护</h2>
-  <p>取消后不再监听此目录，但不会删除已有恢复内容。请先预览，再输入目录 ID 或完整路径确认。</p>
+  <h2>停止自动保护</h2>
+  <p>停止后不再监听此目录，但已有恢复点和历史版本仍然保留。以后重新添加相同路径即可恢复自动保护。</p>
+  <form method="post" action="/roots/{{ detail.root.id }}/disable">
+    <button type="submit" onclick="return confirm('停止监听此目录？已有历史会保留。')">停止自动保护</button>
+  </form>
+</section>
+<section class="panel danger-panel">
+  <h2>彻底移除历史记录</h2>
+  <p><strong>高风险操作：</strong>这会删除该目录在数据库中的文件、版本、恢复点和事件索引，之后无法再通过 SafeVault 恢复。底层对象文件暂不删除，但后续清理可能回收空间。</p>
+  <p>请先预览，再输入目录 ID 或完整路径确认。</p>
   <form method="post" action="/roots/{{ detail.root.id }}/unprotect">
     <button name="mode" value="dry-run" type="submit">预览</button>
     <input name="confirmation" placeholder="目录 ID 或完整路径">
-    <button name="mode" value="confirm" type="submit">确认取消保护</button>
+    <button name="mode" value="confirm" type="submit">确认彻底移除</button>
   </form>
 </section>
 <h2>最近恢复点</h2>
@@ -40,7 +48,7 @@
 </table>
 {% endif %}
 {% if plan %}
-<h2>取消保护预览</h2>
+<h2>彻底移除预览</h2>
 <pre>{{ plan }}</pre>
 {% endif %}
 {% endblock %}

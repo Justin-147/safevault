@@ -134,6 +134,48 @@ def test_ui_can_add_root_and_run_snapshot(sv_home: Path, project: Path) -> None:
         assert _version_count() == 1
 
 
+def test_ui_can_stop_automatic_protection_without_deleting_history(
+    sv_home: Path, project: Path
+) -> None:
+    (project / "tracked.txt").write_text("tracked", encoding="utf-8")
+    add_protected_root(project, "coding")
+    create_snapshot(project, reason="before-disable")
+    root_id = _root_id_for(project)
+    versions_before = _version_count()
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        response = client.post(f"/roots/{root_id}/disable")
+
+    assert response.status_code == 200
+    assert "已有恢复点和历史版本仍然保留" in response.text
+    assert _version_count() == versions_before
+    conn = connect()
+    try:
+        policy = conn.execute(
+            "SELECT enabled FROM protection_policies WHERE root_id = ?", (root_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    assert policy is not None
+    assert int(policy["enabled"]) == 0
+
+
+def test_ui_labels_destructive_unprotect_as_history_removal(
+    sv_home: Path, project: Path
+) -> None:
+    add_protected_root(project, "coding")
+    root_id = _root_id_for(project)
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        response = client.get(f"/roots/{root_id}")
+
+    assert response.status_code == 200
+    assert "彻底移除历史记录" in response.text
+    assert "之后无法再通过 SafeVault 恢复" in response.text
+
+
 def test_ui_add_root_rejects_safevault_home(sv_home: Path) -> None:
     sv_home.mkdir(parents=True)
 

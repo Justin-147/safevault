@@ -124,6 +124,13 @@ button {
 .muted {
   color: #57606a;
 }
+.danger-panel {
+  border-color: #cf222e;
+}
+.danger-panel h2,
+.danger-panel strong {
+  color: #a40e26;
+}
 small {
   color: #57606a;
   word-break: break-all;

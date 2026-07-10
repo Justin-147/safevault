@@ -32,6 +32,7 @@ from safevault.processes import spawn_safevault
 from safevault.protection import (
     auto_detect_candidates,
     register_protected_root,
+    remove_protected_root,
     validate_protection_path,
 )
 from safevault.prune import prune_unreferenced_objects
@@ -405,6 +406,18 @@ def get_root_detail(root_id: int) -> RootDetail:
 def run_snapshot_for_root(root_id: int, reason: str = "ui-manual") -> int:
     root = _get_root_summary(root_id)
     return create_snapshot(Path(root.path), reason=reason)
+
+
+def disable_root_from_ui(root_id: int) -> dict[str, object]:
+    root = _find_root_row(root_id)
+    policy = remove_protected_root(Path(str(root["path"])))
+    return {
+        "root_id": root_id,
+        "root_path": str(root["path"]),
+        "enabled": False,
+        "snapshots_preserved": True,
+        "policy_updated_at": policy.updated_at,
+    }
 
 
 def _find_root_row(root_id: int):

@@ -223,6 +223,25 @@ def build_router() -> APIRouter:
             request, "root_detail.html", token, detail=detail, message=message, error=error
         )
 
+    @router.post("/roots/{root_id}/disable", response_class=HTMLResponse)
+    def root_disable(
+        root_id: int,
+        request: Request,
+        token: str = Depends(require_token),
+    ) -> HTMLResponse:
+        message = None
+        error = None
+        try:
+            services.disable_root_from_ui(root_id)
+            message = "已停止自动保护；已有恢复点和历史版本仍然保留。"
+            detail = services.get_root_detail(root_id)
+        except SafeVaultError as exc:
+            detail = None
+            error = _error_message(exc)
+        return _render(
+            request, "root_detail.html", token, detail=detail, message=message, error=error
+        )
+
     @router.post("/roots/{root_id}/unprotect", response_class=HTMLResponse)
     def root_unprotect(
         root_id: int,
@@ -237,7 +256,7 @@ def build_router() -> APIRouter:
         try:
             if mode == "confirm":
                 plan = services.unprotect_from_ui(root_id, confirmation)
-                message = "Root metadata removed. Object-store files were not deleted."
+                message = "目录及历史索引已移除；底层对象文件尚未自动清理。"
                 detail = None
             else:
                 plan = services.plan_unprotect_from_ui(root_id)

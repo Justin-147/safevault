@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>保护目录</h1>
-<p>在这里随时新增保护范围，或打开某个目录后取消保护。取消保护不会删除已保存的恢复内容。</p>
+<p>在这里随时新增保护范围。打开某个目录后，可以停止自动保护并保留历史，也可以在明确警告后彻底移除历史记录。</p>
 <form method="post" action="/roots/add" class="panel">
   <h2>添加保护文件夹</h2>
   <label>完整路径 <input name="path" placeholder="例如 D:\Research" required></label>

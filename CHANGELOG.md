@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 1.0.2 - 2026-07-10
+
+SafeVault 1.0.2 clarifies and separates two different protected-folder actions.
+
+Fixed:
+- Recovery Home no longer describes destructive root metadata removal as if
+  recoverable history were preserved.
+
+Improved:
+- A new “Stop automatic protection” action disables monitoring while preserving
+  snapshots, versions, and recovery points.
+- Destructive unprotect is labeled “Remove history permanently,” explains that
+  database recovery indexes are deleted, and retains the existing typed
+  confirmation and dry-run preview.
+
 ## 1.0.1 - 2026-07-10
 
 SafeVault 1.0.1 is a Windows first-run reliability and usability release.

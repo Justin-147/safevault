@@ -17,7 +17,7 @@ recent modified files, the restore timeline, search, and quick restore actions.
 Users do not need to know snapshot IDs for common recovery.
 
 The status strip also shows local object-store use against the configured
-storage budget. v1.0.1 smart retention is planning/dry-run only, so SafeVault
+storage budget. v1.0.2 smart retention is planning/dry-run only, so SafeVault
 does not silently remove historical versions.
 
 ## Protect Folders
@@ -77,11 +77,14 @@ safevault protect resume C:\Users\you\Documents
 safevault protect remove C:\Users\you\Documents --confirm
 ```
 
-Pause and remove do not delete stored snapshots or object content.
+Pause and **Stop automatic protection** do not delete stored snapshots or
+recovery history. The separate **Remove history permanently** action deletes
+the root's database version and recovery indexes, so SafeVault can no longer
+restore them; it requires a preview and typed root ID or full path.
 
-The tray's **Quit SafeVault** action stops the daemon and closes the tray for the
-current session. Windows Startup settings control whether protection starts
-again at the next sign-in.
+The tray's **Quit SafeVault** action stops the daemon, Recovery Home, and tray
+for the current session. Windows Startup settings control whether protection
+starts again at the next sign-in.
 
 To remove user Startup entries on Windows:
 

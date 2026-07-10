@@ -1,6 +1,6 @@
 # SafeVault Install Guide
 
-SafeVault 1.0.1 provides stable local continuous file protection.
+SafeVault 1.0.2 provides stable local continuous file protection.
 It keeps BLAKE3 object storage and SQLite metadata on the local machine.
 
 ## Install
