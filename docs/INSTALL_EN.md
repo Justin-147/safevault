@@ -1,6 +1,6 @@
 # SafeVault Install Guide
 
-SafeVault 1.0.0 provides stable local continuous file protection.
+SafeVault 1.0.1 provides stable local continuous file protection.
 It keeps BLAKE3 object storage and SQLite metadata on the local machine.
 
 ## Install
@@ -36,7 +36,8 @@ The installer definition is `packaging/windows/SafeVaultSetup.iss` and produces
 `dist/SafeVaultSetup.exe`. The installer registers current-user Startup entries
 for the daemon and tray by default, starts background protection for the current
 session, and launches the first-run wizard. Both Startup tasks can be disabled
-during setup.
+during setup. Background protection, tray, and Recovery Home use hidden launchers
+and should not leave terminal windows open.
 
 ## First Run
 
@@ -46,9 +47,14 @@ Open the local GUI:
 safevault ui --open
 ```
 
-The onboarding flow lets the user select Documents, Desktop, Projects, Pictures,
-or other folders. SafeVault creates initial snapshots for selected folders and
-can configure an external backup target.
+The onboarding flow recommends Documents, Desktop, and Pictures. Large project
+workspaces are optional, and multiple custom paths can be added. Setup returns
+immediately while the daemon builds initial recovery points in the background;
+closing the browser does not stop protection.
+
+Prefer specific personal or project folders over an entire drive or a large
+workspace containing many projects. This keeps the initial scan and local object
+store manageable.
 
 ## Uninstall Startup Items
 

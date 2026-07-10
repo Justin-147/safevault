@@ -1,45 +1,46 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Root Detail</h1>
+<h1>保护目录详情</h1>
 {% if detail %}
 <dl class="grid">
   <dt>ID</dt><dd>{{ detail.root.id }}</dd>
-  <dt>Path</dt><dd>{{ detail.root.path }}</dd>
-  <dt>Active/deleted</dt><dd>{{ detail.root.active_count }} / {{ detail.root.deleted_count }}</dd>
+  <dt>路径</dt><dd>{{ detail.root.path }}</dd>
+  <dt>现有 / 已删除文件</dt><dd>{{ detail.root.active_count }} / {{ detail.root.deleted_count }}</dd>
 </dl>
-<form method="post" action="/roots/{{ detail.root.id }}/snapshot" class="inline">
-  <input name="reason" value="ui-manual">
-  <button type="submit">Snapshot</button>
-</form>
-<form method="get" action="/versions" class="inline">
-  <input name="file" placeholder="absolute file path">
-  <button type="submit">View Versions</button>
-</form>
+<div class="actions panel">
+  <form method="post" action="/roots/{{ detail.root.id }}/snapshot" class="inline">
+    <input type="hidden" name="reason" value="ui-manual">
+    <button type="submit">立即创建恢复点</button>
+  </form>
+  <form method="get" action="/versions" class="inline">
+    <input name="file" placeholder="文件完整路径">
+    <button type="submit">查看文件历史</button>
+  </form>
+</div>
 <section class="panel">
-  <h2>Unprotect</h2>
-  <p>Dry-run first. Confirm requires typing the root id or full root path. Object-store content files are not deleted.</p>
+  <h2>取消保护</h2>
+  <p>取消后不再监听此目录，但不会删除已有恢复内容。请先预览，再输入目录 ID 或完整路径确认。</p>
   <form method="post" action="/roots/{{ detail.root.id }}/unprotect">
-    <button name="mode" value="dry-run" type="submit">Dry Run</button>
-    <input name="confirmation" placeholder="root id or full path">
-    <button name="mode" value="confirm" type="submit">Confirm Unprotect</button>
+    <button name="mode" value="dry-run" type="submit">预览</button>
+    <input name="confirmation" placeholder="目录 ID 或完整路径">
+    <button name="mode" value="confirm" type="submit">确认取消保护</button>
   </form>
 </section>
-<h2>Recent Snapshots</h2>
-<table><tr><th>ID</th><th>Reason</th><th>Started</th><th>Status</th></tr>
+<h2>最近恢复点</h2>
+<table><tr><th>ID</th><th>原因</th><th>时间</th><th>状态</th></tr>
 {% for snapshot in detail.snapshots %}
 <tr><td>{{ snapshot.id }}</td><td>{{ snapshot.reason }}</td><td>{{ snapshot.started_at }}</td><td>{{ snapshot.status }}</td></tr>
 {% endfor %}
 </table>
-<h2>Recent Deleted Markers</h2>
-<table><tr><th>Path</th><th>Captured</th></tr>
+<h2>最近删除记录</h2>
+<table><tr><th>路径</th><th>记录时间</th></tr>
 {% for item in detail.deleted_markers %}
 <tr><td>{{ item.rel_path }}</td><td>{{ item.captured_at }}</td></tr>
 {% endfor %}
 </table>
 {% endif %}
 {% if plan %}
-<h2>Unprotect Plan</h2>
+<h2>取消保护预览</h2>
 <pre>{{ plan }}</pre>
 {% endif %}
 {% endblock %}
-

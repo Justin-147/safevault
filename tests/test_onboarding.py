@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from safevault.config import load_config
@@ -11,6 +12,11 @@ from safevault.protection import add_protected_root
 from safevault.ui.app import create_app
 
 TOKEN = "test-token"
+
+
+@pytest.fixture(autouse=True)
+def _do_not_start_real_daemon(monkeypatch) -> None:
+    monkeypatch.setattr("safevault.ui.services.ensure_daemon_running", lambda: False)
 
 
 def test_first_open_shows_onboarding(sv_home: Path) -> None:
@@ -25,7 +31,7 @@ def test_first_open_shows_onboarding(sv_home: Path) -> None:
         assert "随 Windows 自动启动 SafeVault" not in response.text
 
 
-def test_onboarding_completion_writes_config_and_initial_snapshot(
+def test_onboarding_completion_returns_without_synchronous_snapshot(
     sv_home: Path, tmp_path: Path, monkeypatch
 ) -> None:
     user_home = tmp_path / "user"
@@ -42,7 +48,8 @@ def test_onboarding_completion_writes_config_and_initial_snapshot(
         )
 
     assert response.status_code == 200
-    assert "Onboarding complete" in response.text
+    assert "设置完成" in response.text
+    assert "初始扫描正在后台进行" in response.text
     assert load_config().app.onboarding_completed is True
     conn = connect()
     try:
@@ -50,13 +57,11 @@ def test_onboarding_completion_writes_config_and_initial_snapshot(
             "SELECT * FROM roots WHERE path = ?",
             (str(desktop.resolve()),),
         ).fetchone()
-        snapshot = conn.execute(
-            "SELECT * FROM snapshots WHERE reason = 'onboarding-initial'"
-        ).fetchone()
+        snapshot_count = int(conn.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0])
     finally:
         conn.close()
     assert root is not None
-    assert snapshot is not None
+    assert snapshot_count == 0
 
 
 def test_onboarding_can_configure_backup(sv_home: Path, tmp_path: Path) -> None:
@@ -174,7 +179,7 @@ def test_onboarding_can_complete_with_existing_root(
         )
 
     assert response.status_code == 200
-    assert "Onboarding complete" in response.text
+    assert "设置完成" in response.text
     assert load_config().app.onboarding_completed is True
 
 
@@ -197,3 +202,75 @@ def test_onboarding_rejects_unsafe_root_without_side_effects(sv_home: Path) -> N
         assert int(conn.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0]) == 0
     finally:
         conn.close()
+
+
+def test_onboarding_accepts_custom_root_and_profile(
+    sv_home: Path, tmp_path: Path
+) -> None:
+    custom = tmp_path / "research"
+    custom.mkdir()
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        response = client.post(
+            "/onboarding",
+            data={
+                "custom_root_path": str(custom),
+                "custom_root_profile": "documents",
+                "backup_schedule": "manual",
+            },
+        )
+
+    assert response.status_code == 200
+    conn = connect()
+    try:
+        root = conn.execute(
+            "SELECT * FROM roots WHERE path = ?", (str(custom.resolve()),)
+        ).fetchone()
+    finally:
+        conn.close()
+    assert root is not None
+    assert root["profile"] == "documents"
+
+
+def test_onboarding_requests_background_daemon_after_registering_root(
+    sv_home: Path, tmp_path: Path, monkeypatch
+) -> None:
+    custom = tmp_path / "protected"
+    custom.mkdir()
+    calls = []
+    monkeypatch.setattr(
+        "safevault.ui.services.ensure_daemon_running",
+        lambda: calls.append("daemon") or True,
+    )
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        response = client.post(
+            "/onboarding",
+            data={
+                "custom_root_path": str(custom),
+                "custom_root_profile": "documents",
+                "backup_schedule": "manual",
+            },
+        )
+
+    assert response.status_code == 200
+    assert calls == ["daemon"]
+
+
+def test_onboarding_project_directory_is_optional_by_default(
+    sv_home: Path, tmp_path: Path, monkeypatch
+) -> None:
+    user_home = tmp_path / "user"
+    projects = user_home / "Projects"
+    projects.mkdir(parents=True)
+    monkeypatch.setenv("USERPROFILE", str(user_home))
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        response = client.get("/", params={"token": TOKEN})
+
+    assert response.status_code == 200
+    assert f'value="{projects.resolve()}"' in response.text
+    assert f'value="{projects.resolve()}" checked' not in response.text
+    assert "再添加一个文件夹" in response.text

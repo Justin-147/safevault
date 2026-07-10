@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -93,3 +94,23 @@ def ui_session_reachable(session: UiSession, *, timeout: float = 0.5) -> bool:
             return response.status < 500
     except (OSError, urllib.error.URLError):
         return False
+
+
+def request_ui_stop() -> bool:
+    """Stop the currently registered local UI after verifying its token endpoint."""
+
+    session = read_ui_session()
+    if session is None:
+        return False
+    if session.pid is None or session.pid == os.getpid():
+        return False
+    if not ui_session_reachable(session):
+        clear_ui_session(session)
+        return False
+    try:
+        os.kill(session.pid, signal.SIGTERM)
+    except OSError:
+        clear_ui_session(session)
+        return False
+    clear_ui_session(session)
+    return True

@@ -12,7 +12,7 @@ from safevault.exporter import export_vault
 from safevault.paths import ensure_home_layout, get_sandboxes_dir
 from safevault.snapshot import create_snapshot
 from safevault.ui.app import create_app
-from safevault.ui.session import read_ui_session, ui_url
+from safevault.ui.session import UiSession, read_ui_session, ui_url
 
 TOKEN = "test-token"
 
@@ -377,3 +377,25 @@ def test_ui_command_removes_session_after_shutdown(runner, sv_home: Path, monkey
 
     assert result.exit_code == 0
     assert read_ui_session() is None
+
+
+def test_ui_command_reuses_existing_reachable_session(
+    runner, sv_home: Path, monkeypatch
+) -> None:
+    session = UiSession(
+        host="127.0.0.1",
+        port=8765,
+        token="existing-token",
+        started_at="2026-07-10T00:00:00+00:00",
+        pid=123,
+    )
+    opened = []
+    monkeypatch.setattr("safevault.ui.session.read_ui_session", lambda: session)
+    monkeypatch.setattr("safevault.ui.session.ui_session_reachable", lambda item: True)
+    monkeypatch.setattr("safevault.cli.webbrowser.open", opened.append)
+
+    result = runner.invoke(app, ["ui", "--open"])
+
+    assert result.exit_code == 0
+    assert "already running" in result.output
+    assert opened == ["http://127.0.0.1:8765/?token=existing-token"]

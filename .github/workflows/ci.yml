@@ -46,7 +46,7 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev,ui,tray,installer]"
-      - run: pytest -q tests/test_cli.py tests/test_object_store.py tests/test_diffing.py tests/test_apply_tamper_resistance.py tests/test_import.py tests/test_startup.py tests/test_windows_productization.py tests/test_onboarding.py tests/test_ui_recovery_home.py tests/test_ai_protection.py tests/test_mass_change.py
+      - run: pytest -q tests/test_cli.py tests/test_object_store.py tests/test_diffing.py tests/test_apply_tamper_resistance.py tests/test_import.py tests/test_processes.py tests/test_startup.py tests/test_windows_productization.py tests/test_onboarding.py tests/test_ui_recovery_home.py tests/test_ai_protection.py tests/test_mass_change.py
       - run: python -m safevault --help
       - run: python -m safevault --version
       - run: powershell -ExecutionPolicy Bypass -File scripts\auto_protect_smoke.ps1

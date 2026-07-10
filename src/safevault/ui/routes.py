@@ -58,6 +58,7 @@ def build_router() -> APIRouter:
                     token,
                     candidates=services.onboarding_candidates_for_ui(),
                     startup_supported=services.startup_supported(),
+                    profiles=sorted(VALID_PROFILES),
                 )
             status = services.get_dashboard_status()
             return _render(
@@ -86,6 +87,7 @@ def build_router() -> APIRouter:
             token,
             candidates=services.onboarding_candidates_for_ui(),
             startup_supported=services.startup_supported(),
+            profiles=sorted(VALID_PROFILES),
         )
 
     @router.post("/onboarding", response_class=HTMLResponse)
@@ -103,8 +105,23 @@ def build_router() -> APIRouter:
         try:
             form = await request.form()
             roots = [str(value) for value in form.getlist("roots")]
+            custom_paths = [str(value) for value in form.getlist("custom_root_path")]
+            custom_profiles = [
+                str(value) for value in form.getlist("custom_root_profile")
+            ]
+            custom_roots = [
+                (
+                    path,
+                    custom_profiles[index]
+                    if index < len(custom_profiles)
+                    else "documents",
+                )
+                for index, path in enumerate(custom_paths)
+                if path.strip()
+            ]
             result = services.complete_onboarding_from_ui(
                 roots=roots,
+                custom_roots=custom_roots,
                 backup_target=backup_target,
                 backup_schedule=backup_schedule,
                 startup_enabled=startup_enabled,
@@ -112,8 +129,8 @@ def build_router() -> APIRouter:
                 skip_roots=skip_roots,
             )
             message = (
-                f"Onboarding complete. Roots: {len(result['roots'])}; "
-                f"initial snapshots: {len(result['snapshots'])}"
+                f"设置完成，已保护 {result['roots_count']} 个目录。"
+                "初始扫描正在后台进行，可以关闭此浏览器页面。"
             )
             status = services.get_dashboard_status()
             return _render(
@@ -138,6 +155,7 @@ def build_router() -> APIRouter:
             token,
             candidates=services.onboarding_candidates_for_ui(),
             startup_supported=services.startup_supported(),
+            profiles=sorted(VALID_PROFILES),
             error=error,
         )
 

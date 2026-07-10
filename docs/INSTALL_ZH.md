@@ -1,6 +1,6 @@
 # SafeVault 安装指南
 
-SafeVault 1.0.0 提供稳定的本地连续文件保护。它继续使用
+SafeVault 1.0.1 提供稳定的本地连续文件保护。它继续使用
 BLAKE3 对象库和 SQLite 元数据，不会安装内核驱动，也不会开放远程管理端口。
 
 ## 安装
@@ -33,7 +33,8 @@ powershell -ExecutionPolicy Bypass -File scripts\build_windows_installer.ps1
 安装器定义在 `packaging/windows/SafeVaultSetup.iss`，输出
 `dist/SafeVaultSetup.exe`。安装器默认注册当前用户的 daemon 和 tray 开机
 启动项，立即启动本次会话的后台保护，并在安装完成后打开首次启动向导。
-两个开机启动选项都可以在安装时取消。
+两个开机启动选项都可以在安装时取消。后台保护、托盘和恢复首页均为隐藏启动，
+正常情况下不会留下终端窗口。
 
 ## 第一次启动
 
@@ -41,8 +42,12 @@ powershell -ExecutionPolicy Bypass -File scripts\build_windows_installer.ps1
 safevault ui --open
 ```
 
-首次向导会让用户选择 Documents、Desktop、Projects、Pictures 或其他目录。
-完成后 SafeVault 会创建初始快照，并可选配置外部备份目录。
+首次向导会推荐 Documents、Desktop、Pictures，并把较大的项目工作区作为可选项。
+用户也可以输入多个自定义目录。完成后 SafeVault 立即进入恢复首页，daemon 在后台
+创建初始恢复点；浏览器可以关闭，不会停止后台保护。
+
+不要为了省事保护整个磁盘或包含许多项目的顶层目录。优先添加具体项目和个人文件
+目录，可以显著减少首次扫描时间和本地对象库占用。
 
 ## 移除开机启动项
 

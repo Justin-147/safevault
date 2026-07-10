@@ -3,7 +3,7 @@
 ## How far back can SafeVault restore a file?
 
 SafeVault can restore any version that is still referenced by its SQLite
-metadata and present in the BLAKE3 object store. v1.0.0 does not automatically
+metadata and present in the BLAKE3 object store. v1.0.1 does not automatically
 delete version history: smart retention is planning/dry-run only. Available
 history therefore depends on when protection started, captured changes, manual
 maintenance, and available disk space.
@@ -23,8 +23,24 @@ choice controls the next sign-in.
 ## Which folders are protected?
 
 Only folders selected during onboarding or added later are protected. SafeVault
-recommends Desktop, Documents, Pictures, and common project folders when they
-exist. It never protects an entire filesystem root by default.
+recommends Desktop, Documents, and Pictures. Large project workspaces are shown
+but not selected by default. Custom folders can be added during onboarding or
+later, and an entire filesystem root is never protected by default.
+
+## Can I close the browser after setup?
+
+Yes. The browser is only the local Recovery Home. The daemon continues the
+initial scan and watches protected folders in the background. Choosing Quit from
+the tray stops background protection, Recovery Home, and the tray for the current
+session.
+
+## Why did the first scan use a lot of disk space?
+
+A top-level folder containing many projects, media files, datasets, or generated
+artifacts can create a large first version. Prefer specific personal and project
+folders over a whole drive or large workspace. Unprotecting a folder does not
+automatically erase its history; do not manually delete `.safevault` unless that
+history is no longer needed.
 
 ## How do I restore a deleted file?
 
@@ -83,4 +99,4 @@ import, and cleanup actions require words such as `ALLOW DELETE`, `PRUNE`, or
 
 Identical content is stored once, but new versions still grow the object store.
 Recovery Home shows object-store use and the configured budget. Smart retention
-in v1.0.0 is planning/dry-run only, so it never removes history automatically.
+in v1.0.1 is planning/dry-run only, so it never removes history automatically.

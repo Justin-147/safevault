@@ -1,20 +1,23 @@
 from __future__ import annotations
 
-import subprocess
-import sys
 import time
 import webbrowser
 from importlib import import_module
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Any
 
 from safevault.backup import run_backup
 from safevault.daemon import get_daemon_status, request_daemon_stop
 from safevault.errors import SafeVaultError
+from safevault.processes import spawn_safevault
 from safevault.protection import list_protection, pause_protected_root, resume_protected_root
 from safevault.snapshot import create_snapshot
-from safevault.ui.session import read_ui_session, ui_session_reachable, ui_url
+from safevault.ui.session import (
+    read_ui_session,
+    request_ui_stop,
+    ui_session_reachable,
+    ui_url,
+)
 from safevault.verify import run_verify
 
 
@@ -97,14 +100,13 @@ def quit_safevault(icon) -> None:
     """Stop background protection and close the tray for the current session."""
 
     request_daemon_stop()
+    request_ui_stop()
     icon.stop()
 
 
 def _spawn_safevault(args: list[str]) -> None:
-    kwargs: dict[str, Any] = {}
-    if sys.platform.startswith("win"):
-        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-    subprocess.Popen([sys.executable, "-m", "safevault", *args], **kwargs)
+    log_name = "ui" if args and args[0] == "ui" else "daemon"
+    spawn_safevault(args, log_name=log_name)
 
 
 def _load_tray_dependencies():

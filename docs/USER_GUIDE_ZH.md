@@ -14,13 +14,13 @@ safevault backup status
 GUI 首页会显示受保护目录、daemon 健康状态、最近删除、最近修改、恢复时间线、
 搜索和一键恢复入口。
 
-状态栏还会显示本地对象库用量和配置的空间预算。v1.0.0 的智能保留只提供规划
+状态栏还会显示本地对象库用量和配置的空间预算。v1.0.1 的智能保留只提供规划
 与 dry-run，因此 SafeVault 不会静默删除历史版本。
 
 ## 保护文件夹
 
-首次向导可以选择 Desktop、Documents、Pictures、Projects 等常见目录。之后也可
-以从 GUI 或 CLI 添加：
+首次向导默认推荐 Desktop、Documents、Pictures，项目工作区默认不勾选。可以在
+向导中直接输入其他路径，之后也可从 GUI 的“保护目录”页面添加或取消保护：
 
 ```bash
 safevault protect add C:\Users\you\Documents --profile documents
@@ -74,8 +74,11 @@ safevault protect remove C:\Users\you\Documents --confirm
 
 暂停和移除保护不会删除已经保存的快照或对象内容。
 
-托盘中的“退出 SafeVault”会停止当前会话的 daemon 并关闭托盘。Windows 开机
+托盘中的“退出 SafeVault”会停止当前会话的 daemon、恢复首页和托盘。Windows 开机
 启动设置决定下次登录时是否重新开始保护。
+
+浏览器只是本地恢复界面，关闭浏览器标签不会停止 daemon。首次设置后，初始扫描会
+继续在后台进行。若目录很大，请在恢复首页观察“最近保护点”和本地存储占用。
 
 Windows 用户可以移除开机启动项：
 

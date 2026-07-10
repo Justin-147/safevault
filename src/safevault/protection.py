@@ -236,9 +236,14 @@ def auto_detect_candidates() -> list[AutoProtectCandidate]:
             (userprofile / "Documents", "documents", True, "Documents"),
             (userprofile / "Pictures", "documents", True, "Pictures"),
             (userprofile / "Downloads", "downloads", False, "Downloads is optional"),
-            (Path("D:/CodexWork"), "coding", True, "Codex workspace"),
-            (userprofile / "source", "coding", True, "source projects"),
-            (userprofile / "Projects", "coding", True, "Projects"),
+            (
+                Path("D:/CodexWork"),
+                "coding",
+                False,
+                "Codex workspace (optional; may use substantial storage)",
+            ),
+            (userprofile / "source", "coding", False, "source projects (optional)"),
+            (userprofile / "Projects", "coding", False, "Projects (optional)"),
         ]
     )
     detected: list[AutoProtectCandidate] = []

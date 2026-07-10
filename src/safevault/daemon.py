@@ -196,6 +196,9 @@ def get_daemon_stop_path() -> Path:
 
 def get_daemon_status() -> DaemonStatus:
     counts = _daemon_policy_counts()
+    lock_path = get_daemon_lock_path()
+    lock_exists = lock_path.exists()
+    lock_pid = _read_pid(lock_path) if lock_exists else None
     conn = connect()
     try:
         row = conn.execute("SELECT * FROM daemon_state WHERE id = 1").fetchone()
@@ -208,22 +211,40 @@ def get_daemon_status() -> DaemonStatus:
             started_at=None,
             last_heartbeat_at=None,
             message=None,
-            lock_exists=get_daemon_lock_path().exists(),
+            lock_exists=lock_exists,
             stop_requested=get_daemon_stop_path().exists(),
             protected_roots=counts.protected_roots,
             watched_roots=counts.watched_roots,
             paused_roots=counts.paused_roots,
             missing_roots=counts.missing_roots,
         )
+    stored_status = str(row["status"])
+    stored_pid = None if row["pid"] is None else int(row["pid"])
+    runtime_alive = (
+        lock_pid is not None
+        and stored_pid == lock_pid
+        and _process_exists(lock_pid)
+    )
+    status = stored_status
+    message = None if row["message"] is None else str(row["message"])
+    pid = stored_pid
+    if stored_status == "running" and not runtime_alive:
+        status = "error"
+        pid = None
+        message = "background process is not running; restart SafeVault"
+    elif stored_status == "stopping" and not runtime_alive:
+        status = "stopped"
+        pid = None
+        message = "stopped"
     return DaemonStatus(
-        status=str(row["status"]),
-        pid=None if row["pid"] is None else int(row["pid"]),
+        status=status,
+        pid=pid,
         started_at=None if row["started_at"] is None else str(row["started_at"]),
         last_heartbeat_at=(
             None if row["last_heartbeat_at"] is None else str(row["last_heartbeat_at"])
         ),
-        message=None if row["message"] is None else str(row["message"]),
-        lock_exists=get_daemon_lock_path().exists(),
+        message=message,
+        lock_exists=lock_exists,
         stop_requested=get_daemon_stop_path().exists(),
         protected_roots=counts.protected_roots,
         watched_roots=counts.watched_roots,
@@ -265,6 +286,15 @@ def _policy_is_paused(policy: ProtectionPolicy, now: datetime) -> bool:
 
 def request_daemon_stop() -> None:
     ensure_home_layout()
+    lock_path = get_daemon_lock_path()
+    lock_pid = _read_pid(lock_path)
+    if lock_pid is None or not _process_exists(lock_pid):
+        with suppress(OSError):
+            lock_path.unlink()
+        with suppress(OSError):
+            get_daemon_stop_path().unlink()
+        _write_daemon_state(status="stopped", message="already stopped")
+        return
     get_daemon_stop_path().write_text(utc_now_iso(), encoding="utf-8")
     _write_daemon_state(status="stopping", message="stop requested")
 
@@ -681,7 +711,10 @@ def _write_daemon_state(
             )
             VALUES (1, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
-                pid = excluded.pid,
+                pid = CASE
+                    WHEN excluded.status = 'stopping' THEN daemon_state.pid
+                    ELSE excluded.pid
+                END,
                 status = excluded.status,
                 started_at = CASE
                     WHEN ? THEN excluded.started_at

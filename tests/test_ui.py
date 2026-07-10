@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from safevault.config import BackupConfig, SafeVaultConfig, load_config, save_config
@@ -14,6 +15,11 @@ from safevault.ui.app import create_app
 from safevault.ui.auth import UI_COOKIE_NAME
 
 TOKEN = "test-token"
+
+
+@pytest.fixture(autouse=True)
+def _do_not_start_real_daemon(monkeypatch) -> None:
+    monkeypatch.setattr("safevault.ui.services.ensure_daemon_running", lambda: False)
 
 
 def _root_id_for(path: Path) -> int:
@@ -88,6 +94,13 @@ def test_ui_requires_token_sets_cookie_and_serves_pages(sv_home: Path) -> None:
         assert "安装与首次设置" in help_page.text
         assert "/docs/FAQ_ZH.md" in help_page.text
         assert "USER_MANUAL.md" not in help_page.text
+
+
+def test_favicon_is_intentionally_empty_instead_of_404(sv_home: Path) -> None:
+    with TestClient(create_app(token=TOKEN)) as client:
+        response = client.get("/favicon.ico")
+
+    assert response.status_code == 204
 
 
 def test_ui_post_requires_token(sv_home: Path, project: Path) -> None:

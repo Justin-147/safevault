@@ -1,5 +1,5 @@
 #define MyAppName "SafeVault"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "SafeVault"
 #define MyAppExeName "safevault.exe"
 
@@ -18,27 +18,32 @@ WizardStyle=modern
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
+CloseApplications=yes
+RestartApplications=no
 
 [Files]
 Source: "..\..\dist\safevault\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "safevault-hidden.vbs"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\SafeVault Recovery Home"; Filename: "{app}\{#MyAppExeName}"; Parameters: "ui --open"
-Name: "{group}\SafeVault Tray"; Filename: "{app}\{#MyAppExeName}"; Parameters: "tray"
-Name: "{userstartup}\SafeVault Daemon"; Filename: "{app}\{#MyAppExeName}"; Parameters: "daemon run"; Tasks: startup
-Name: "{userstartup}\SafeVault Tray"; Filename: "{app}\{#MyAppExeName}"; Parameters: "tray"; Tasks: tray
+Name: "{group}\SafeVault Recovery Home"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\safevault-hidden.vbs"" ui --open"
+Name: "{group}\SafeVault Tray"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\safevault-hidden.vbs"" tray"
+Name: "{userstartup}\SafeVault Daemon"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\safevault-hidden.vbs"" daemon run"; Tasks: startup
+Name: "{userstartup}\SafeVault Tray"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\safevault-hidden.vbs"" tray"; Tasks: tray
 
 [Tasks]
 Name: "startup"; Description: "Start SafeVault automatically with Windows"; GroupDescription: "Startup:"; Flags: checkedonce
 Name: "tray"; Description: "Start SafeVault tray with Windows"; GroupDescription: "Startup:"; Flags: checkedonce
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Parameters: "daemon run"; Description: "Start SafeVault background protection"; Flags: nowait postinstall skipifsilent runhidden; Tasks: startup
-Filename: "{app}\{#MyAppExeName}"; Parameters: "tray"; Description: "Start SafeVault tray"; Flags: nowait postinstall skipifsilent; Tasks: tray
-Filename: "{app}\{#MyAppExeName}"; Parameters: "ui --open"; Description: "Launch SafeVault first-run wizard"; Flags: nowait postinstall skipifsilent
+Filename: "{sys}\wscript.exe"; Parameters: """{app}\safevault-hidden.vbs"" daemon run"; Description: "Start SafeVault background protection"; Flags: nowait postinstall skipifsilent runhidden; Tasks: startup
+Filename: "{sys}\wscript.exe"; Parameters: """{app}\safevault-hidden.vbs"" tray"; Description: "Start SafeVault tray"; Flags: nowait postinstall skipifsilent runhidden; Tasks: tray
+Filename: "{sys}\wscript.exe"; Parameters: """{app}\safevault-hidden.vbs"" ui --open"; Description: "Launch SafeVault first-run wizard"; Flags: nowait postinstall skipifsilent runhidden
 
 [UninstallDelete]
 Type: files; Name: "{userstartup}\SafeVault Daemon.lnk"
 Type: files; Name: "{userstartup}\SafeVault Tray.lnk"
 Type: files; Name: "{userstartup}\SafeVault Daemon.cmd"
 Type: files; Name: "{userstartup}\SafeVault Tray.cmd"
+Type: files; Name: "{userstartup}\SafeVault Daemon.vbs"
+Type: files; Name: "{userstartup}\SafeVault Tray.vbs"

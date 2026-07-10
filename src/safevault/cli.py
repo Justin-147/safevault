@@ -1082,6 +1082,8 @@ def ui_command(
         from safevault.ui.session import (
             clear_ui_session,
             create_ui_session,
+            read_ui_session,
+            ui_session_reachable,
             ui_url,
             write_ui_session,
         )
@@ -1093,6 +1095,17 @@ def ui_command(
         if "python-multipart" in str(exc):
             raise SafeVaultError("Install UI dependencies with: pip install -e '.[ui]'") from exc
         raise
+
+    existing = read_ui_session()
+    if existing is not None and ui_session_reachable(existing):
+        url = ui_url(existing)
+        console.print("SafeVault local UI is already running")
+        console.print(url)
+        if open_browser:
+            webbrowser.open(url)
+        return
+    if existing is not None:
+        clear_ui_session(existing)
 
     token = test_token or secrets.token_urlsafe(32)
     session = create_ui_session(host, port, token)

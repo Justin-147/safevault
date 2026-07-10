@@ -7,10 +7,12 @@ from pathlib import Path
 
 from safevault.errors import SafeVaultError
 
-DAEMON_STARTUP_NAME = "SafeVault Daemon.cmd"
-TRAY_STARTUP_NAME = "SafeVault Tray.cmd"
+DAEMON_STARTUP_NAME = "SafeVault Daemon.vbs"
+TRAY_STARTUP_NAME = "SafeVault Tray.vbs"
 DAEMON_STARTUP_LINK_NAME = "SafeVault Daemon.lnk"
 TRAY_STARTUP_LINK_NAME = "SafeVault Tray.lnk"
+LEGACY_DAEMON_STARTUP_NAME = "SafeVault Daemon.cmd"
+LEGACY_TRAY_STARTUP_NAME = "SafeVault Tray.cmd"
 
 
 @dataclass(frozen=True)
@@ -56,7 +58,7 @@ def install_user_startup(
         daemon_link = startup / DAEMON_STARTUP_LINK_NAME
         daemon_entry = daemon_link if daemon_link.exists() else startup / DAEMON_STARTUP_NAME
         if daemon_entry.suffix.lower() != ".lnk":
-            daemon_changed = _write_cmd(
+            daemon_changed = _write_vbs(
                 daemon_entry,
                 executable,
                 ["daemon", "run"],
@@ -66,7 +68,7 @@ def install_user_startup(
         tray_link = startup / TRAY_STARTUP_LINK_NAME
         tray_entry = tray_link if tray_link.exists() else startup / TRAY_STARTUP_NAME
         if tray_entry.suffix.lower() != ".lnk":
-            tray_changed = _write_cmd(
+            tray_changed = _write_vbs(
                 tray_entry,
                 executable,
                 ["tray"],
@@ -83,12 +85,22 @@ def install_user_startup(
 def uninstall_user_startup(*, daemon: bool = True, tray: bool = True) -> StartupInstallResult:
     startup = windows_startup_dir()
     daemon_entries = (
-        [startup / DAEMON_STARTUP_NAME, startup / DAEMON_STARTUP_LINK_NAME]
+        [
+            startup / DAEMON_STARTUP_NAME,
+            startup / LEGACY_DAEMON_STARTUP_NAME,
+            startup / DAEMON_STARTUP_LINK_NAME,
+        ]
         if daemon
         else []
     )
     tray_entries = (
-        [startup / TRAY_STARTUP_NAME, startup / TRAY_STARTUP_LINK_NAME] if tray else []
+        [
+            startup / TRAY_STARTUP_NAME,
+            startup / LEGACY_TRAY_STARTUP_NAME,
+            startup / TRAY_STARTUP_LINK_NAME,
+        ]
+        if tray
+        else []
     )
     daemon_entry = next((entry for entry in daemon_entries if entry.exists()), None)
     tray_entry = next((entry for entry in tray_entries if entry.exists()), None)
@@ -110,8 +122,12 @@ def _startup_command(executable: str, args: list[str], *, frozen: bool) -> str:
     return " ".join([f'"{executable}"', *prefix, *args])
 
 
-def _write_cmd(path: Path, executable: str, args: list[str], *, frozen: bool) -> bool:
-    content = f"@echo off\r\n{_startup_command(executable, args, frozen=frozen)}\r\n"
+def _write_vbs(path: Path, executable: str, args: list[str], *, frozen: bool) -> bool:
+    command = _startup_command(executable, args, frozen=frozen).replace('"', '""')
+    content = (
+        'Option Explicit\r\nDim shell\r\nSet shell = CreateObject("WScript.Shell")\r\n'
+        f'shell.Run "{command}", 0, False\r\n'
+    )
     encoded = content.encode("utf-8")
     if path.exists() and path.read_bytes() == encoded:
         return False

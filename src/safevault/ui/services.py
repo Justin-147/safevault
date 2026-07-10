@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import time
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import cast
 from safevault import __version__
 from safevault.backup import configure_backup, get_backup_status, run_backup
 from safevault.config import (
+    VALID_PROFILES,
     BackupSchedule,
     load_config,
     save_config,
@@ -26,6 +28,7 @@ from safevault.importer import ImportResult, import_vault
 from safevault.models import ApplyResult, DiffResult
 from safevault.object_store import iter_object_hashes, object_path
 from safevault.paths import get_safevault_home, get_sandboxes_dir
+from safevault.processes import spawn_safevault
 from safevault.protection import (
     auto_detect_candidates,
     register_protected_root,
@@ -207,28 +210,24 @@ def onboarding_candidates_for_ui() -> list[dict[str, object]]:
 def complete_onboarding_from_ui(
     *,
     roots: list[str],
+    custom_roots: list[tuple[str, str]] | None = None,
     backup_target: str,
     backup_schedule: str,
     startup_enabled: bool = False,
     startup_configured: bool = False,
     skip_roots: bool = False,
-) -> dict[str, list[int]]:
+) -> dict[str, object]:
     created_roots: list[int] = []
-    snapshots: list[int] = []
     if startup_enabled and not startup_supported():
         raise SafeVaultError("Windows startup integration is only supported on Windows")
     selected_roots = validate_onboarding_inputs(
         roots=roots,
+        custom_roots=custom_roots or [],
         backup_target=backup_target,
         backup_schedule=backup_schedule,
         skip_roots=skip_roots,
     )
-    candidate_profiles = {
-        str(Path(candidate.path).resolve(strict=False)): candidate.profile
-        for candidate in auto_detect_candidates()
-    }
-    for root_path in selected_roots:
-        profile = candidate_profiles.get(str(root_path), "coding")
+    for root_path, profile in selected_roots:
         try:
             root_id = add_root_from_ui(root_path, profile)
         except SafeVaultError as exc:
@@ -236,7 +235,6 @@ def complete_onboarding_from_ui(
                 raise
             root_id = _root_id_for_path(root_path)
         created_roots.append(root_id)
-        snapshots.append(create_snapshot(root_path, reason="onboarding-initial"))
     if backup_target.strip():
         configure_backup(Path(backup_target), _backup_schedule_for_ui(backup_schedule))
     if startup_enabled:
@@ -245,41 +243,84 @@ def complete_onboarding_from_ui(
         uninstall_user_startup(daemon=True, tray=False)
     config = load_config()
     save_config(replace(config, app=replace(config.app, onboarding_completed=True)))
-    return {"roots": created_roots, "snapshots": snapshots}
+    daemon_started = ensure_daemon_running() if created_roots else False
+    return {
+        "root_ids": created_roots,
+        "roots_count": len(created_roots),
+        "daemon_started": daemon_started,
+    }
 
 
 def validate_onboarding_inputs(
     *,
     roots: list[str],
+    custom_roots: list[tuple[str, str]],
     backup_target: str,
     backup_schedule: str,
     skip_roots: bool = False,
-) -> list[Path]:
+) -> list[tuple[Path, str]]:
     _backup_schedule_for_ui(backup_schedule)
-    selected_roots = _dedupe_paths(
-        validate_protection_path(Path(root_text)) for root_text in roots
-    )
+    candidate_profiles = {
+        str(Path(candidate.path).resolve(strict=False)): candidate.profile
+        for candidate in auto_detect_candidates()
+    }
+    selected: list[tuple[Path, str]] = []
+    for root_text in roots:
+        root_path = validate_protection_path(Path(root_text))
+        selected.append((root_path, candidate_profiles.get(str(root_path), "coding")))
+    for root_text, profile in custom_roots:
+        if not root_text.strip():
+            continue
+        if profile not in VALID_PROFILES:
+            raise SafeVaultError(
+                "profile must be one of: " + ", ".join(sorted(VALID_PROFILES))
+            )
+        selected.append((validate_protection_path(Path(root_text)), profile))
+    selected_roots = _dedupe_root_specs(selected)
     if not selected_roots and not skip_roots:
         raise SafeVaultError("select at least one protected root or explicitly skip")
     if backup_target.strip():
         existing_roots = _existing_root_paths()
         validate_backup_target(
             backup_target,
-            protected_roots=[*existing_roots, *selected_roots],
+            protected_roots=[
+                *existing_roots,
+                *(root_path for root_path, _profile in selected_roots),
+            ],
         )
     return selected_roots
 
 
-def _dedupe_paths(paths) -> list[Path]:
-    result: list[Path] = []
+def _dedupe_root_specs(
+    roots: list[tuple[Path, str]],
+) -> list[tuple[Path, str]]:
+    result: list[tuple[Path, str]] = []
     seen: set[str] = set()
-    for path in paths:
+    for path, profile in roots:
         key = str(path).casefold()
         if key in seen:
             continue
         seen.add(key)
-        result.append(path)
+        result.append((path, profile))
     return result
+
+
+def ensure_daemon_running() -> bool:
+    status = get_daemon_status()
+    if status.status == "running" and status.lock_exists:
+        return False
+    process = spawn_safevault(["daemon", "run"], log_name="daemon")
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline:
+        status = get_daemon_status()
+        if status.status == "running" and status.lock_exists:
+            return True
+        if process.poll() is not None:
+            raise SafeVaultError(
+                "background protection failed to start; see SafeVault logs/daemon.log"
+            )
+        time.sleep(0.1)
+    return True
 
 
 def _existing_root_paths() -> list[Path]:

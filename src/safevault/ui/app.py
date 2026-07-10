@@ -4,6 +4,7 @@ import secrets
 from importlib.resources import files
 
 from fastapi import FastAPI
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from safevault.ui.routes import build_router
@@ -16,6 +17,10 @@ def create_app(token: str | None = None) -> FastAPI:
     package_files = files("safevault.ui")
     static_dir = package_files.joinpath("static")
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon() -> Response:
+        return Response(status_code=204)
+
     app.include_router(build_router())
     return app
-

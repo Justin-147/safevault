@@ -11,7 +11,9 @@ from safevault.config import DaemonConfig, SafeVaultConfig, save_config
 from safevault.daemon import (
     DaemonPolicyRegistry,
     get_daemon_lock_path,
+    get_daemon_status,
     record_deleted_marker,
+    request_daemon_stop,
     run_daemon,
 )
 from safevault.db import connect, get_or_create_root
@@ -119,6 +121,80 @@ def test_daemon_stop_creates_stop_request(runner, sv_home) -> None:
     result = runner.invoke(app, ["daemon", "stop"])
 
     assert result.exit_code == 0
+    assert (sv_home / "daemon.stop").is_file() is False
+    assert get_daemon_status().status == "stopped"
+
+
+def test_daemon_status_rejects_stale_running_database_state(sv_home) -> None:
+    conn = connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO daemon_state(
+                id, pid, status, started_at, last_heartbeat_at, message
+            )
+            VALUES (1, 999999, 'running', '2026-07-10T00:00:00+00:00',
+                    '2026-07-10T00:00:00+00:00', 'running')
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    status = get_daemon_status()
+
+    assert status.status == "error"
+    assert status.pid is None
+    assert status.lock_exists is False
+    assert status.message == "background process is not running; restart SafeVault"
+
+
+def test_stop_request_on_stale_daemon_settles_to_stopped(sv_home) -> None:
+    conn = connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO daemon_state(
+                id, pid, status, started_at, last_heartbeat_at, message
+            )
+            VALUES (1, 999999, 'running', '2026-07-10T00:00:00+00:00',
+                    '2026-07-10T00:00:00+00:00', 'running')
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    request_daemon_stop()
+
+    assert get_daemon_status().status == "stopped"
+    assert (sv_home / "daemon.stop").exists() is False
+
+
+def test_stop_request_preserves_running_pid_until_daemon_exits(sv_home) -> None:
+    get_daemon_lock_path().parent.mkdir(parents=True, exist_ok=True)
+    get_daemon_lock_path().write_text(str(os.getpid()), encoding="utf-8")
+    conn = connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO daemon_state(
+                id, pid, status, started_at, last_heartbeat_at, message
+            )
+            VALUES (1, ?, 'running', '2026-07-10T00:00:00+00:00',
+                    '2026-07-10T00:00:00+00:00', 'running')
+            """,
+            (os.getpid(),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    request_daemon_stop()
+
+    status = get_daemon_status()
+    assert status.status == "stopping"
+    assert status.pid == os.getpid()
     assert (sv_home / "daemon.stop").is_file()
 
 

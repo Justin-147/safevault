@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+## 1.0.1 - 2026-07-10
+
+SafeVault 1.0.1 is a Windows first-run reliability and usability release.
+
+Fixed:
+- The Windows installer, Startup entries, tray, and Recovery Home now launch
+  through a hidden Windows launcher instead of leaving visible terminal windows.
+- Packaged `safevault.exe` processes now start daemon/UI children directly;
+  they no longer use the invalid frozen command `safevault.exe -m safevault`.
+- First-run setup no longer blocks the browser while selected folders are fully
+  scanned. It saves policies immediately and lets the daemon build initial
+  recovery points in the background.
+- Daemon status no longer reports a stale database `running`/`stopping` state
+  when the corresponding process and lock do not exist.
+- The browser favicon request now returns an intentional empty response instead
+  of a noisy 404, and the broken static README status badge was removed.
+
+Improved:
+- Onboarding accepts multiple custom folder paths and explains that folders can
+  be added or unprotected later.
+- Large development workspaces remain discoverable but are no longer selected
+  by default; generated test, cache, coverage, and review-render directories are
+  ignored by default.
+- Tray Quit stops background protection, the local UI, and the tray for the
+  current session.
+- Background child-process output is written under `SAFEVAULT_HOME/logs` for
+  troubleshooting without showing consoles.
+
 ## 1.0.0 - 2026-07-10
 
 SafeVault 1.0.0 turns the existing snapshot and object-store foundation into a

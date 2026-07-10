@@ -3,7 +3,6 @@
 [![CI](https://github.com/Justin-147/safevault/actions/workflows/ci.yml/badge.svg)](https://github.com/Justin-147/safevault/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Justin-147/safevault?include_prereleases&label=release)](https://github.com/Justin-147/safevault/releases)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
-[![Status](https://img.shields.io/badge/status-v1.0.0-stable-green.svg)](CHANGELOG.md)
 
 **[中文说明](README.zh-CN.md) | [Documentation](docs/README.md)**
 
@@ -53,8 +52,10 @@ and uninstall details.
 ## First Run
 
 The first-run wizard recommends existing folders such as Desktop, Documents,
-Pictures, and common project directories. Select only the folders you want to
-protect. SafeVault creates an initial version and starts continuous protection.
+and Pictures. Large project workspaces are optional, and custom paths can be
+added directly. Select only the folders you want to protect. Setup returns
+immediately while SafeVault builds initial recovery points in the background;
+the browser page can then be closed.
 
 Open the local Recovery Home at any time:
 
@@ -104,7 +105,7 @@ content before writing it back atomically.
   containment and does not isolate credentials, the network, or the user account.
 - The watcher is best-effort; completed versions are the recovery source of
   truth.
-- Smart retention is planning/dry-run only in v1.0.0 and does not silently
+- Smart retention is planning/dry-run only in v1.0.1 and does not silently
   remove history.
 - Local history does not protect against disk loss. Keep exports on an external
   disk, NAS, or another machine.
@@ -124,5 +125,5 @@ python -m safevault --help
 bash scripts/release_check.sh
 ```
 
-SafeVault 1.0.0 requires Python 3.12 or later. See [CHANGELOG.md](CHANGELOG.md)
-and [v1.0.0 release notes](docs/releases/v1.0.0.md) for release details.
+SafeVault 1.0.1 requires Python 3.12 or later. See [CHANGELOG.md](CHANGELOG.md)
+and [v1.0.1 release notes](docs/releases/v1.0.1.md) for release details.

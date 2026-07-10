@@ -103,7 +103,26 @@ def test_quit_safevault_stops_daemon_and_tray(monkeypatch, sv_home) -> None:
             calls.append("tray")
 
     monkeypatch.setattr("safevault.tray.request_daemon_stop", lambda: calls.append("daemon"))
+    monkeypatch.setattr("safevault.tray.request_ui_stop", lambda: calls.append("ui"))
 
     quit_safevault(FakeIcon())
 
-    assert calls == ["daemon", "tray"]
+    assert calls == ["daemon", "ui", "tray"]
+
+
+def test_tray_child_process_uses_shared_launcher(monkeypatch, sv_home) -> None:
+    calls = []
+    monkeypatch.setattr(
+        "safevault.tray.spawn_safevault",
+        lambda args, *, log_name: calls.append((args, log_name)),
+    )
+
+    from safevault.tray import _spawn_safevault
+
+    _spawn_safevault(["daemon", "run"])
+    _spawn_safevault(["ui"])
+
+    assert calls == [
+        (["daemon", "run"], "daemon"),
+        (["ui"], "ui"),
+    ]
