@@ -18,7 +18,7 @@ python -m safevault tray --check
 python - <<'PY'
 from safevault import __version__
 
-assert __version__ == "1.0.0"
+assert __version__ == "1.0.1"
 print("version ok")
 PY
 python - <<'PY'
@@ -43,6 +43,7 @@ required = [
     "safevault/ui/templates/dashboard.html",
     "safevault/ui/templates/onboarding.html",
     "safevault/ui/static/safevault.css",
+    "safevault/ui/static/safevault.js",
     "safevault/ui/docs/README.zh-CN.md",
     "safevault/ui/docs/README.md",
     "safevault/ui/docs/INSTALL_EN.md",
