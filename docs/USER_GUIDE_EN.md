@@ -17,7 +17,7 @@ recent modified files, the restore timeline, search, and quick restore actions.
 Users do not need to know snapshot IDs for common recovery.
 
 The status strip also shows local object-store use against the configured
-storage budget. v1.0.2 smart retention is planning/dry-run only, so SafeVault
+storage budget. v1.0.3 smart retention is planning/dry-run only, so SafeVault
 does not silently remove historical versions.
 
 ## Protect Folders

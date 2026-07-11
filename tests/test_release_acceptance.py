@@ -30,7 +30,7 @@ def test_release_acceptance_assets_cover_productization_pillars() -> None:
         encoding="utf-8"
     )
     user_guide = (root / "docs" / "USER_GUIDE_EN.md").read_text(encoding="utf-8")
-    release_notes = (root / "docs" / "releases" / "v1.0.2.md").read_text(
+    release_notes = (root / "docs" / "releases" / "v1.0.3.md").read_text(
         encoding="utf-8"
     )
 
@@ -44,5 +44,5 @@ def test_release_acceptance_assets_cover_productization_pillars() -> None:
         assert phrase in acceptance
     assert "Start SafeVault automatically with Windows" in setup
     assert "Protect Folders" in user_guide
-    assert "SafeVault v1.0.2" in release_notes
+    assert "SafeVault v1.0.3" in release_notes
     assert "Upgrade Notes" in release_notes

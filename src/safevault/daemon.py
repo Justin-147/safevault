@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import os
 import time
 import uuid
@@ -68,9 +69,10 @@ class WatchedRoot:
 
 
 class DaemonPolicyRegistry:
-    def __init__(self, observer) -> None:
+    def __init__(self, observer, *, auto_flush: bool = True) -> None:
         self.observer = observer
         self.watched: dict[int, WatchedRoot] = {}
+        self.auto_flush = auto_flush
 
     def sync(
         self,
@@ -135,6 +137,7 @@ class DaemonPolicyRegistry:
             moved_func=_record_moved_from_watcher,
             bulk_delete_threshold=config.bulk_delete_threshold,
             bulk_delete_window_seconds=float(config.bulk_delete_window_seconds),
+            auto_flush=self.auto_flush,
         )
         watch = self.observer.schedule(handler, str(root_path), recursive=True)
         self.watched[policy.root_id] = WatchedRoot(
@@ -154,6 +157,11 @@ class DaemonPolicyRegistry:
     def stop_all(self) -> None:
         for root_id in list(self.watched):
             self.unschedule(root_id)
+
+    def enable_auto_flush(self) -> None:
+        self.auto_flush = True
+        for watched in self.watched.values():
+            watched.handler.enable_auto_flush()
 
 
 class DaemonLock:
@@ -316,9 +324,9 @@ def run_daemon(
         _write_daemon_state(status="running", message="starting", reset_started=True)
         had_error = False
         try:
-            _run_startup_scan()
-            _update_heartbeat("startup scan complete")
             if test_once:
+                _run_startup_scan()
+                _update_heartbeat("startup scan complete")
                 return
             _run_watch_loop(poll_interval_seconds=poll_interval_seconds)
         except Exception as exc:
@@ -526,11 +534,16 @@ def run_scheduled_tasks(*, now: datetime | None = None) -> None:
 def _run_watch_loop(*, poll_interval_seconds: float) -> None:
     config = load_config()
     observer = Observer()
-    registry = DaemonPolicyRegistry(observer)
+    registry = DaemonPolicyRegistry(observer, auto_flush=False)
     registry.sync(list_protection(), config.daemon)
     observer.start()
-    last_policy_refresh = time.monotonic()
     try:
+        # Watch first so changes to an already-scanned root cannot be missed while
+        # startup reconciliation continues through other, potentially large roots.
+        _run_startup_scan()
+        _update_heartbeat("startup scan complete")
+        registry.enable_auto_flush()
+        last_policy_refresh = time.monotonic()
         while not get_daemon_stop_path().exists():
             _update_heartbeat("running")
             now = time.monotonic()
@@ -841,11 +854,45 @@ def _process_exists(pid: int) -> bool:
         return False
     if pid == os.getpid():
         return True
+    if os.name == "nt":
+        return _windows_process_exists(pid)
     try:
         os.kill(pid, 0)
     except OSError:
         return False
     return True
+
+
+def _windows_process_exists(pid: int) -> bool:
+    win_dll = getattr(ctypes, "WinDLL", None)
+    get_last_error = getattr(ctypes, "get_last_error", None)
+    if win_dll is None or get_last_error is None:
+        return False
+
+    kernel32 = win_dll("kernel32", use_last_error=True)
+    open_process = kernel32.OpenProcess
+    open_process.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+    open_process.restype = ctypes.c_void_p
+    get_exit_code = kernel32.GetExitCodeProcess
+    get_exit_code.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+    get_exit_code.restype = ctypes.c_int
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = [ctypes.c_void_p]
+    close_handle.restype = ctypes.c_int
+
+    process_query_limited_information = 0x1000
+    error_access_denied = 5
+    still_active = 259
+    handle = open_process(process_query_limited_information, False, pid)
+    if not handle:
+        return int(get_last_error()) == error_access_denied
+    try:
+        exit_code = ctypes.c_ulong()
+        if not get_exit_code(handle, ctypes.byref(exit_code)):
+            return True
+        return exit_code.value == still_active
+    finally:
+        close_handle(handle)
 
 
 def _parse_iso(value: str) -> datetime:

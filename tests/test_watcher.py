@@ -43,6 +43,25 @@ def test_delete_event_can_trigger_snapshot(project) -> None:
     assert calls == ["watch"]
 
 
+def test_auto_flush_can_be_deferred_during_startup_scan(project) -> None:
+    calls = []
+    handler = SafeVaultEventHandler(
+        project,
+        snapshot_func=lambda path, reason: calls.append(reason) or 1,
+        auto_flush=False,
+    )
+    path = project / "changed-during-startup.txt"
+    path.write_text("changed", encoding="utf-8")
+
+    handler.note_event("modified", path)
+
+    assert handler.pending is True
+    assert handler._timer is None
+    handler.enable_auto_flush()
+    assert handler._timer is not None
+    handler.stop()
+
+
 def test_batch_deletion_warning_triggers_over_threshold(project) -> None:
     warnings = []
     handler = SafeVaultEventHandler(

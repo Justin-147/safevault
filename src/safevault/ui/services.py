@@ -519,18 +519,27 @@ def list_deleted_for_ui(since: str = "24h") -> list[DeletedEntry]:
 
 
 def list_recent_modified_for_ui(since: str = "24h") -> list[dict[str, object]]:
-    return [
-        {
-            "root_path": entry.root_path,
-            "rel_path": entry.rel_path,
-            "absolute_path": str(Path(entry.root_path) / entry.rel_path),
-            "detected_at": entry.detected_at,
-            "event_type": entry.event_type,
-            "size": entry.size,
-            "file_kind": entry.file_kind,
-        }
-        for entry in list_recent_modified(since=since, limit=20)
-    ]
+    rows: list[dict[str, object]] = []
+    seen: set[tuple[str, str]] = set()
+    for entry in list_recent_modified(since=since, limit=200):
+        key = (entry.root_path, entry.rel_path)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(
+            {
+                "root_path": entry.root_path,
+                "rel_path": entry.rel_path,
+                "absolute_path": str(Path(entry.root_path) / entry.rel_path),
+                "detected_at": entry.detected_at,
+                "event_type": entry.event_type,
+                "size": entry.size,
+                "file_kind": entry.file_kind,
+            }
+        )
+        if len(rows) >= 20:
+            break
+    return rows
 
 
 def timeline_for_ui(limit: int = 20) -> list[TimelineEntry]:

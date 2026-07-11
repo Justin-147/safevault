@@ -45,22 +45,21 @@ def list_recent_deleted(since: str = "24h", limit: int = 100) -> list[RecentEntr
             FROM versions v
             JOIN files f ON f.id = v.file_id
             JOIN roots r ON r.id = f.root_id
-            WHERE v.is_deleted_marker = 1 AND v.captured_at >= ?
-            UNION
-            SELECT
-                r.path AS root_path,
-                e.rel_path AS rel_path,
-                e.detected_at AS detected_at,
-                e.event_type AS event_type,
-                NULL AS size,
-                NULL AS file_kind
-            FROM events e
-            JOIN roots r ON r.id = e.root_id
-            WHERE e.event_type = 'deleted' AND e.detected_at >= ?
+            WHERE f.status = 'deleted'
+              AND v.is_deleted_marker = 1
+              AND v.captured_at >= ?
+              AND v.id = (
+                  SELECT latest.id
+                  FROM versions latest
+                  WHERE latest.file_id = f.id
+                    AND latest.is_deleted_marker = 1
+                  ORDER BY latest.captured_at DESC, latest.id DESC
+                  LIMIT 1
+              )
             ORDER BY detected_at DESC
             LIMIT ?
             """,
-            (cutoff, cutoff, limit),
+            (cutoff, limit),
         ).fetchall()
     finally:
         conn.close()

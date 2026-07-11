@@ -11,6 +11,7 @@ from safevault.daemon import run_daemon
 from safevault.protection import add_protected_root
 from safevault.snapshot import create_snapshot
 from safevault.ui.app import create_app
+from safevault.ui.services import list_recent_modified_for_ui
 
 TOKEN = "test-token"
 
@@ -90,6 +91,21 @@ def test_dashboard_displays_daemon_and_backup_details(
     assert "后台消息" in response.text
     assert "本地存储" in response.text
     assert "100 GB" in response.text
+
+
+def test_recovery_home_recent_modified_lists_each_file_once(sv_home, project) -> None:
+    target = project / "frequent.txt"
+    target.write_text("one", encoding="utf-8")
+    create_snapshot(project)
+    target.write_text("two", encoding="utf-8")
+    create_snapshot(project)
+    target.write_text("three", encoding="utf-8")
+    create_snapshot(project)
+
+    rows = list_recent_modified_for_ui("24h")
+
+    matches = [row for row in rows if row["rel_path"] == "frequent.txt"]
+    assert len(matches) == 1
 
 
 def test_one_click_restore_uses_normal_confirmation(sv_home: Path, project: Path) -> None:

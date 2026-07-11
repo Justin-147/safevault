@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 1.0.3 - 2026-07-11
+
+SafeVault 1.0.3 fixes Windows background-status reporting and closes a startup
+monitoring gap discovered during first-run testing with large protected roots.
+
+Fixed:
+- Windows process detection now uses the native process API instead of
+  `os.kill(pid, 0)`, which incorrectly reported a live daemon as stopped.
+- The filesystem observer starts before startup reconciliation, so changes in
+  an already-scanned folder are not missed while another large folder is still
+  being scanned.
+- Recent Deleted shows each currently deleted file once. Restored files no
+  longer remain in that list, while their history remains available elsewhere.
+- Recovery Home shows only the latest recent-modification entry per file, so a
+  frequently updated file cannot fill the whole panel.
+
 ## 1.0.2 - 2026-07-10
 
 SafeVault 1.0.2 clarifies and separates two different protected-folder actions.

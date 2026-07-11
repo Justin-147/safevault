@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from safevault.cli import app
+from safevault.restore import restore_file
 from safevault.snapshot import create_snapshot
 
 
@@ -17,7 +18,23 @@ def test_recent_deleted_reports_deleted_marker(runner, sv_home, project) -> None
 
     assert result.exit_code == 0
     rows = json.loads(result.output)
-    assert any(row["rel_path"] == "lost.txt" for row in rows)
+    matches = [row for row in rows if row["rel_path"] == "lost.txt"]
+    assert len(matches) == 1
+
+
+def test_recent_deleted_hides_file_after_restore(runner, sv_home, project) -> None:
+    target = project / "restored.txt"
+    target.write_text("hello", encoding="utf-8")
+    create_snapshot(project)
+    target.unlink()
+    create_snapshot(project)
+    restore_file(target, latest=True)
+
+    result = runner.invoke(app, ["recent", "deleted", "--since", "24h", "--json"])
+
+    assert result.exit_code == 0
+    rows = json.loads(result.output)
+    assert all(row["rel_path"] != "restored.txt" for row in rows)
 
 
 def test_recent_modified_reports_created_and_modified_events(runner, sv_home, project) -> None:

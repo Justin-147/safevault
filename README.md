@@ -105,7 +105,7 @@ content before writing it back atomically.
   containment and does not isolate credentials, the network, or the user account.
 - The watcher is best-effort; completed versions are the recovery source of
   truth.
-- Smart retention is planning/dry-run only in v1.0.2 and does not silently
+- Smart retention is planning/dry-run only in v1.0.3 and does not silently
   remove history.
 - Local history does not protect against disk loss. Keep exports on an external
   disk, NAS, or another machine.
@@ -125,5 +125,5 @@ python -m safevault --help
 bash scripts/release_check.sh
 ```
 
-SafeVault 1.0.2 requires Python 3.12 or later. See [CHANGELOG.md](CHANGELOG.md)
-and [v1.0.2 release notes](docs/releases/v1.0.2.md) for release details.
+SafeVault 1.0.3 requires Python 3.12 or later. See [CHANGELOG.md](CHANGELOG.md)
+and [v1.0.3 release notes](docs/releases/v1.0.3.md) for release details.

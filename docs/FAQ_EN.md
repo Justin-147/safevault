@@ -3,7 +3,7 @@
 ## How far back can SafeVault restore a file?
 
 SafeVault can restore any version that is still referenced by its SQLite
-metadata and present in the BLAKE3 object store. v1.0.2 does not automatically
+metadata and present in the BLAKE3 object store. v1.0.3 does not automatically
 delete version history: smart retention is planning/dry-run only. Available
 history therefore depends on when protection started, captured changes, manual
 maintenance, and available disk space.
@@ -107,4 +107,4 @@ import, and cleanup actions require words such as `ALLOW DELETE`, `PRUNE`, or
 
 Identical content is stored once, but new versions still grow the object store.
 Recovery Home shows object-store use and the configured budget. Smart retention
-in v1.0.2 is planning/dry-run only, so it never removes history automatically.
+in v1.0.3 is planning/dry-run only, so it never removes history automatically.

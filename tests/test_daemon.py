@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 
 import pytest
 
@@ -325,6 +327,9 @@ class FakeObserver:
     def __init__(self) -> None:
         self.scheduled = []
         self.unscheduled = []
+        self.started = False
+        self.stopped = False
+        self.joined = False
 
     def schedule(self, handler, path: str, recursive: bool):
         watch = (path, len(self.scheduled), recursive)
@@ -333,6 +338,51 @@ class FakeObserver:
 
     def unschedule(self, watch) -> None:
         self.unscheduled.append(watch)
+
+    def start(self) -> None:
+        self.started = True
+
+    def stop(self) -> None:
+        self.stopped = True
+
+    def join(self) -> None:
+        self.joined = True
+
+
+def test_process_exists_detects_another_live_process() -> None:
+    creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    process = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        creationflags=creationflags,
+    )
+    try:
+        assert daemon_module._process_exists(process.pid) is True
+    finally:
+        process.terminate()
+        process.wait(timeout=10)
+    assert daemon_module._process_exists(process.pid) is False
+
+
+def test_watch_loop_starts_observer_before_startup_scan(
+    sv_home, project, monkeypatch
+) -> None:
+    add_protected_root(project, "coding")
+    observer = FakeObserver()
+    scan_observer_states: list[bool] = []
+    daemon_module.get_daemon_stop_path().write_text("stop", encoding="utf-8")
+    monkeypatch.setattr(daemon_module, "Observer", lambda: observer)
+    monkeypatch.setattr(
+        daemon_module,
+        "_run_startup_scan",
+        lambda: scan_observer_states.append(observer.started),
+    )
+
+    daemon_module._run_watch_loop(poll_interval_seconds=0.01)
+
+    assert scan_observer_states == [True]
+    assert observer.scheduled[0][0].auto_flush is True
+    assert observer.stopped is True
+    assert observer.joined is True
 
 
 def test_daemon_policy_registry_adds_new_root(sv_home, project) -> None:

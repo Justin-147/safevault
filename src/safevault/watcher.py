@@ -30,6 +30,7 @@ class SafeVaultEventHandler(FileSystemEventHandler):
         suspicious_extension_threshold: int = 25,
         bulk_delete_window_seconds: float = 30,
         bulk_delete_warning_cooldown_seconds: float = 60,
+        auto_flush: bool = True,
     ) -> None:
         self.root = root
         self.snapshot_func = snapshot_func or (lambda path, reason: create_snapshot(path, reason))
@@ -42,6 +43,7 @@ class SafeVaultEventHandler(FileSystemEventHandler):
         self.suspicious_extension_threshold = suspicious_extension_threshold
         self.bulk_delete_window_seconds = bulk_delete_window_seconds
         self.bulk_delete_warning_cooldown_seconds = bulk_delete_warning_cooldown_seconds
+        self.auto_flush = auto_flush
         self.last_bulk_delete_warning_at = -bulk_delete_warning_cooldown_seconds
         self.last_bulk_change_warning_at = -bulk_delete_warning_cooldown_seconds
         self.last_suspicious_extension_warning_at = -bulk_delete_warning_cooldown_seconds
@@ -125,8 +127,15 @@ class SafeVaultEventHandler(FileSystemEventHandler):
                         f"{self.bulk_delete_threshold} delete events in "
                         f"{int(self.bulk_delete_window_seconds)} seconds"
                     )
-            if now is None:
+            if now is None and self.auto_flush:
                 self._schedule_timer()
+
+    def enable_auto_flush(self) -> None:
+        with self._lock:
+            self.auto_flush = True
+            pending = self.pending
+        if pending:
+            self._schedule_timer()
 
     def _schedule_timer(self) -> None:
         if self._timer is not None:
