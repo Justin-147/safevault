@@ -71,7 +71,7 @@ class BackupConfig:
 
 @dataclass(frozen=True)
 class RetentionConfig:
-    max_vault_size_gb: int = 100
+    max_vault_size_gb: int = 10
     keep_days: int = 90
     conservative_prune_only: bool = True
 
@@ -160,7 +160,7 @@ class SafeVaultConfig:
             ),
             retention=RetentionConfig(
                 max_vault_size_gb=_positive_int(
-                    retention.get("max_vault_size_gb", 100),
+                    retention.get("max_vault_size_gb", 10),
                     "retention.max_vault_size_gb",
                 ),
                 keep_days=_positive_int(retention.get("keep_days", 90), "retention.keep_days"),

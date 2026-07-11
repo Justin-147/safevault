@@ -25,6 +25,8 @@ def test_first_open_shows_onboarding(sv_home: Path) -> None:
 
     assert response.status_code == 200
     assert "欢迎使用 SafeVault" in response.text
+    assert "选择数据存放位置" in response.text
+    assert "10" in response.text
     if os.name == "nt":
         assert "随 Windows 自动启动 SafeVault" in response.text
     else:

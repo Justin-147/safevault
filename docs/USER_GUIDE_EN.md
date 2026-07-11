@@ -17,8 +17,34 @@ recent modified files, the restore timeline, search, and quick restore actions.
 Users do not need to know snapshot IDs for common recovery.
 
 The status strip also shows local object-store use against the configured
-storage budget. v1.0.3 smart retention is planning/dry-run only, so SafeVault
-does not silently remove historical versions.
+storage budget. The v1.1.0 default target is 10 GB. Smart retention remains
+planning/dry-run only, so SafeVault does not silently remove historical
+versions.
+
+## Manage Storage
+
+Open **Storage** from Recovery Home to see the active data location, object and
+total use, free disk space, the minimum needed for one latest restorable version
+per file, per-root estimates, and the largest tracked files.
+
+Changing the target changes warnings only. If the minimum already exceeds 10
+GB, narrow protected folders and avoid replaceable media, installers, models,
+datasets, and generated outputs. Never delete object-store files manually.
+
+To move storage, choose an empty destination. SafeVault stops background
+protection, checks free space, copies the database and objects, verifies them,
+then switches the location. Select old-copy removal and type `MOVE STORAGE` only
+when the original disk should be reclaimed. Failed verification leaves the
+source intact. Deep verification of a large vault can take time.
+
+Advanced users can run:
+
+```bash
+safevault storage status
+safevault storage analyze
+safevault storage budget 10
+safevault storage migrate D:\SafeVaultData --remove-source --confirm "MOVE STORAGE"
+```
 
 ## Protect Folders
 

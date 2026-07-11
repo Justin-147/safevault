@@ -65,6 +65,13 @@ from safevault.retention import build_retention_plan, build_smart_retention_plan
 from safevault.sandbox import apply_sandbox, create_sandbox, list_sandboxes
 from safevault.snapshot import create_snapshot, relative_path
 from safevault.startup import install_user_startup, uninstall_user_startup
+from safevault.storage import (
+    MIGRATION_CONFIRMATION,
+    analyze_storage,
+    get_storage_status,
+    migrate_storage,
+    set_storage_budget,
+)
 from safevault.tray import run_tray
 from safevault.verify import run_verify
 from safevault.watcher import watch_roots
@@ -75,6 +82,7 @@ protect_app = typer.Typer(no_args_is_help=True)
 recent_app = typer.Typer(no_args_is_help=True)
 daemon_app = typer.Typer(no_args_is_help=True)
 backup_app = typer.Typer(no_args_is_help=True)
+storage_app = typer.Typer(no_args_is_help=True)
 
 SAFE_SANDBOX_CLEAN_STATUSES = {"applied"}
 LOCAL_UI_HOSTS = {"127.0.0.1", "localhost"}
@@ -83,6 +91,7 @@ app.add_typer(protect_app, name="protect")
 app.add_typer(recent_app, name="recent")
 app.add_typer(daemon_app, name="daemon")
 app.add_typer(backup_app, name="backup")
+app.add_typer(storage_app, name="storage")
 
 
 def print_json(data: object) -> None:
@@ -376,6 +385,96 @@ def backup_disable(json_output: bool = typer.Option(False, "--json")) -> None:
         print_json(data)
         return
     console.print("Automatic backup disabled")
+
+
+@storage_app.command(name="status")
+@handle_errors
+def storage_status(json_output: bool = typer.Option(False, "--json")) -> None:
+    status = get_storage_status()
+    if json_output:
+        print_json(status.to_dict())
+        return
+    table = Table("Field", "Value")
+    table.add_row("Data location", status.home)
+    table.add_row("Object store", _human_bytes(status.object_store_bytes))
+    table.add_row("Total SafeVault data", _human_bytes(status.total_bytes))
+    table.add_row("Free space", _human_bytes(status.free_bytes))
+    table.add_row("Target budget", f"{status.budget_gb} GB")
+    table.add_row("Over target", "yes" if status.over_budget else "no")
+    table.add_row("On system drive", "yes" if status.system_drive else "no")
+    console.print(table)
+
+
+@storage_app.command(name="analyze")
+@handle_errors
+def storage_analyze(json_output: bool = typer.Option(False, "--json")) -> None:
+    analysis = analyze_storage()
+    if json_output:
+        print_json(analysis.to_dict())
+        return
+    console.print(
+        "Minimum space for one latest restorable version of every tracked file: "
+        + _human_bytes(analysis.minimum_recoverable_bytes)
+    )
+    roots = Table("Protected root", "Minimum", "Unique objects")
+    for root_item in analysis.root_usage:
+        roots.add_row(
+            root_item.root_path,
+            _human_bytes(root_item.minimum_bytes),
+            str(root_item.unique_objects),
+        )
+    console.print(roots)
+    largest = Table("Protected root", "File", "Size")
+    for file_item in analysis.largest_files:
+        largest.add_row(
+            file_item.root_path,
+            file_item.rel_path,
+            _human_bytes(file_item.size),
+        )
+    console.print(largest)
+
+
+@storage_app.command(name="budget")
+@handle_errors
+def storage_budget(gigabytes: int) -> None:
+    set_storage_budget(gigabytes)
+    console.print(f"Storage target updated: {gigabytes} GB")
+
+
+@storage_app.command(name="migrate")
+@handle_errors
+def storage_migrate(
+    destination: Path,
+    remove_source: bool = typer.Option(False, "--remove-source"),
+    confirmation: str | None = typer.Option(None, "--confirm"),
+    stop_daemon: bool = typer.Option(True, "--stop-daemon/--no-stop-daemon"),
+    restart_daemon: bool = typer.Option(True, "--restart-daemon/--no-restart-daemon"),
+    deep_verify: bool = typer.Option(True, "--deep-verify/--no-deep-verify"),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    if remove_source and confirmation != MIGRATION_CONFIRMATION:
+        raise SafeVaultError(
+            f"--remove-source requires --confirm \"{MIGRATION_CONFIRMATION}\""
+        )
+    result = migrate_storage(
+        destination,
+        remove_source=remove_source,
+        confirmation=confirmation,
+        stop_daemon=stop_daemon,
+        restart_daemon=restart_daemon,
+        deep_verify=deep_verify,
+    )
+    if json_output:
+        print_json(result.to_dict())
+        return
+    console.print(f"SafeVault data location: {result.destination}")
+    console.print(f"Copied: {_human_bytes(result.bytes_copied)}")
+    if result.source_removed:
+        console.print(f"Old data removed: {result.source}")
+    elif result.cleanup_error:
+        console.print(f"Old data remains at {result.source}: {result.cleanup_error}")
+    else:
+        console.print(f"Verified old copy retained at: {result.source}")
 
 
 @app.command()
@@ -1270,6 +1369,16 @@ def _print_unprotect_plan(plan: UnprotectPlan) -> None:
     console.print(f"Event rows: {plan.events}")
     console.print(f"Sandbox rows: {plan.sandboxes}")
     console.print("Object-store content files will not be deleted")
+
+
+def _human_bytes(value: int) -> str:
+    units = ("B", "KB", "MB", "GB", "TB")
+    size = float(value)
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
 
 
 def main() -> None:

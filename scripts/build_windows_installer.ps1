@@ -40,7 +40,12 @@ if ($null -ne $compilerCommand) {
     if (Test-Path -LiteralPath $standardCompiler) {
         $compilerPath = $standardCompiler
     } else {
-        throw "Inno Setup compiler not found: $InnoSetupCompiler"
+        $userCompiler = Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"
+        if (Test-Path -LiteralPath $userCompiler) {
+            $compilerPath = $userCompiler
+        } else {
+            throw "Inno Setup compiler not found: $InnoSetupCompiler"
+        }
     }
 }
 & $compilerPath $setupScript

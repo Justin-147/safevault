@@ -3,6 +3,18 @@
 <h1>欢迎使用 SafeVault</h1>
 <p>选择需要自动保护的文件夹。个人文件夹已推荐勾选，较大的项目目录由你决定是否加入。</p>
 <form method="post" action="/onboarding" class="panel" data-onboarding-form>
+  <h2>选择数据存放位置</h2>
+  <label>
+    SafeVault 数据目录
+    <input name="storage_location" value="{{ storage.suggested }}" required>
+  </label>
+  <p class="muted">这里保存可恢复版本。建议选择 D 盘、其他非系统盘或可靠的外置磁盘，例如 <code>D:\SafeVaultData</code>。</p>
+  <label>
+    建议空间目标（GB）
+    <input name="storage_budget_gb" type="number" min="1" step="1" value="{{ storage.budget_gb }}" required>
+  </label>
+  <p class="muted">默认 10 GB 是管理目标，不会通过删除最后一个可恢复版本来强行达成。选择过大的目录时，SafeVault 会在“存储”页面显示最低所需空间。</p>
+
   <h2>选择保护目录</h2>
   <table>
     <tr><th>保护</th><th>文件夹</th><th>类型</th><th>说明</th></tr>

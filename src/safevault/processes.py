@@ -4,7 +4,7 @@ import subprocess
 import sys
 from typing import IO, Any
 
-from safevault.paths import ensure_home_layout, get_safevault_home
+from safevault.paths import get_runtime_logs_dir
 
 
 def safevault_command(
@@ -35,8 +35,9 @@ def spawn_safevault(
     output: IO[bytes] | int = subprocess.DEVNULL
     log_file: IO[bytes] | None = None
     if log_name:
-        ensure_home_layout()
-        log_path = get_safevault_home() / "logs" / f"{log_name}.log"
+        logs_dir = get_runtime_logs_dir()
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        log_path = logs_dir / f"{log_name}.log"
         log_file = log_path.open("ab")
         output = log_file
 

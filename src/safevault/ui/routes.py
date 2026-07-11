@@ -57,6 +57,7 @@ def build_router() -> APIRouter:
                     "onboarding.html",
                     token,
                     candidates=services.onboarding_candidates_for_ui(),
+                    storage=services.onboarding_storage_for_ui(),
                     startup_supported=services.startup_supported(),
                     profiles=sorted(VALID_PROFILES),
                 )
@@ -86,6 +87,7 @@ def build_router() -> APIRouter:
             "onboarding.html",
             token,
             candidates=services.onboarding_candidates_for_ui(),
+            storage=services.onboarding_storage_for_ui(),
             startup_supported=services.startup_supported(),
             profiles=sorted(VALID_PROFILES),
         )
@@ -98,6 +100,8 @@ def build_router() -> APIRouter:
         startup_enabled: bool = Form(False),
         startup_configured: bool = Form(False),
         skip_roots: bool = Form(False),
+        storage_location: str = Form(""),
+        storage_budget_gb: int = Form(10),
         token: str = Depends(require_token),
     ) -> HTMLResponse:
         message = None
@@ -127,6 +131,8 @@ def build_router() -> APIRouter:
                 startup_enabled=startup_enabled,
                 startup_configured=startup_configured,
                 skip_roots=skip_roots,
+                storage_location=storage_location,
+                storage_budget_gb=storage_budget_gb,
             )
             message = (
                 f"设置完成，已保护 {result['roots_count']} 个目录。"
@@ -154,8 +160,70 @@ def build_router() -> APIRouter:
             "onboarding.html",
             token,
             candidates=services.onboarding_candidates_for_ui(),
+            storage=services.onboarding_storage_for_ui(),
             startup_supported=services.startup_supported(),
             profiles=sorted(VALID_PROFILES),
+            error=error,
+        )
+
+    @router.get("/storage", response_class=HTMLResponse)
+    def storage_page(
+        request: Request, token: str = Depends(require_token)
+    ) -> HTMLResponse:
+        return _render(
+            request,
+            "storage.html",
+            token,
+            storage=services.storage_for_ui(),
+        )
+
+    @router.post("/storage/budget", response_class=HTMLResponse)
+    def storage_budget(
+        request: Request,
+        budget_gb: int = Form(...),
+        token: str = Depends(require_token),
+    ) -> HTMLResponse:
+        message = None
+        error = None
+        try:
+            services.set_storage_budget_from_ui(budget_gb)
+            message = f"存储目标已更新为 {budget_gb} GB。"
+        except SafeVaultError as exc:
+            error = _error_message(exc)
+        return _render(
+            request,
+            "storage.html",
+            token,
+            storage=services.storage_for_ui(),
+            message=message,
+            error=error,
+        )
+
+    @router.post("/storage/migrate", response_class=HTMLResponse)
+    def storage_migrate(
+        request: Request,
+        destination: str = Form(...),
+        remove_source: bool = Form(False),
+        confirmation: str = Form(""),
+        token: str = Depends(require_token),
+    ) -> HTMLResponse:
+        message = None
+        error = None
+        try:
+            services.start_storage_migration_from_ui(
+                destination,
+                remove_source=remove_source,
+                confirmation=confirmation,
+            )
+            message = "存储迁移已在后台启动，可以关闭页面后稍后回来查看。"
+        except SafeVaultError as exc:
+            error = _error_message(exc)
+        return _render(
+            request,
+            "storage.html",
+            token,
+            storage=services.storage_for_ui(),
+            message=message,
             error=error,
         )
 

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>存储管理</h1>
+
+<section class="status-grid">
+  <div><strong>当前数据位置</strong><span>{{ storage.status.home }}</span></div>
+  <div><strong>对象库</strong><span>{{ storage.object_store_display }}</span></div>
+  <div><strong>SafeVault 总占用</strong><span>{{ storage.total_display }}</span></div>
+  <div><strong>目标空间</strong><span>{{ storage.status.budget_gb }} GB</span></div>
+  <div><strong>最低可恢复体积</strong><span>{{ storage.minimum_display }}</span></div>
+  <div><strong>磁盘剩余空间</strong><span>{{ storage.free_display }}</span></div>
+</section>
+
+{% if storage.status.system_drive %}
+<p class="warning">当前数据位于系统盘。建议迁移到非系统盘，避免恢复历史挤占 Windows 空间。</p>
+{% endif %}
+{% if storage.status.over_budget %}
+<p class="warning">当前对象库已经超过目标空间。若“最低可恢复体积”也超过目标，必须缩小保护范围或排除大型生成文件；仅删除旧版本无法达到目标。</p>
+{% endif %}
+
+<section class="panel">
+  <h2>空间目标</h2>
+  <form method="post" action="/storage/budget">
+    <label>目标大小（GB） <input name="budget_gb" type="number" min="1" step="1" value="{{ storage.status.budget_gb }}" required></label>
+    <button type="submit">保存目标</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>迁移数据位置</h2>
+  <p>迁移会先停止后台保护，把数据库和对象完整复制到新位置，逐个校验对象，再切换位置。关闭浏览器不会中断后台迁移。</p>
+  <form method="post" action="/storage/migrate">
+    <label>新位置 <input name="destination" placeholder="D:\SafeVaultData" required></label>
+    <label><input type="checkbox" name="remove_source" value="true"> 校验成功后删除旧副本并释放原磁盘空间</label>
+    <label>删除旧副本确认词 <input name="confirmation" placeholder="{{ storage.migration_confirmation }}"></label>
+    <p class="warning">只有勾选删除旧副本时才需要输入 <code>{{ storage.migration_confirmation }}</code>。迁移失败时不会删除原数据。</p>
+    <button type="submit">开始迁移</button>
+  </form>
+
+  {% if storage.migration %}
+  <h3>最近迁移状态</h3>
+  {% if storage.migration.status in ["queued", "running"] %}
+  <p class="message" data-storage-migration-active>迁移正在后台进行，本页会自动刷新。</p>
+  {% endif %}
+  <table>
+    <tr><th>状态</th><td>{{ storage.migration.status }}</td></tr>
+    <tr><th>阶段</th><td>{{ storage.migration.phase }}</td></tr>
+    <tr><th>来源</th><td>{{ storage.migration.source }}</td></tr>
+    <tr><th>目标</th><td>{{ storage.migration.destination }}</td></tr>
+    <tr><th>已复制文件</th><td>{{ storage.migration.files_copied }}</td></tr>
+    <tr><th>旧副本已删除</th><td>{{ "是" if storage.migration.source_removed else "否" }}</td></tr>
+    {% if storage.migration.error %}<tr><th>消息</th><td>{{ storage.migration.error }}</td></tr>{% endif %}
+  </table>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>各保护目录的最低占用估算</h2>
+  <p class="muted">这是每个文件只保留一个最新可恢复版本时仍需的空间；相同对象跨目录时总和可能略有重复。</p>
+  <table>
+    <tr><th>保护目录</th><th>最低占用</th><th>唯一对象</th></tr>
+    {% for item in storage.root_usage %}
+    <tr><td>{{ item.root_path }}</td><td>{{ item.minimum_display }}</td><td>{{ item.unique_objects }}</td></tr>
+    {% else %}
+    <tr><td colspan="3">还没有已捕获的文件。</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
+<section class="panel">
+  <h2>占用最大的已跟踪文件</h2>
+  <table>
+    <tr><th>文件</th><th>保护目录</th><th>大小</th></tr>
+    {% for item in storage.largest_files %}
+    <tr><td>{{ item.rel_path }}</td><td>{{ item.root_path }}</td><td>{{ item.size_display }}</td></tr>
+    {% else %}
+    <tr><td colspan="3">暂无数据。</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endblock %}

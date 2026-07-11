@@ -3,7 +3,7 @@
 ## How far back can SafeVault restore a file?
 
 SafeVault can restore any version that is still referenced by its SQLite
-metadata and present in the BLAKE3 object store. v1.0.3 does not automatically
+metadata and present in the BLAKE3 object store. v1.1.0 does not automatically
 delete version history: smart retention is planning/dry-run only. Available
 history therefore depends on when protection started, captured changes, manual
 maintenance, and available disk space.
@@ -49,6 +49,22 @@ artifacts can create a large first version. Prefer specific personal and project
 folders over a whole drive or large workspace. Unprotecting a folder does not
 automatically erase its history; do not manually delete `.safevault` unless that
 history is no longer needed.
+
+## Can I move SafeVault data away from the C drive?
+
+Yes. In v1.1.0, open Recovery Home's Storage page and select an empty folder such
+as `D:\SafeVaultData`. SafeVault copies and verifies the database and objects
+before switching. It removes the old copy only when selected and confirmed with
+`MOVE STORAGE`. Do not move `.safevault` manually.
+
+## Why can use remain above 10 GB after setting a 10 GB target?
+
+The target is a safe soft budget, not a hard cap. SafeVault will not delete a
+file's final restorable content merely to meet it. If the latest selected files
+already total more than 10 GB, narrow the protected scope or remove replaceable
+large files. The object store deduplicates identical whole-file content; it is
+not block-level delta storage, and videos, installers, models, and archives are
+usually already compressed.
 
 ## How do I restore a deleted file?
 
@@ -107,4 +123,4 @@ import, and cleanup actions require words such as `ALLOW DELETE`, `PRUNE`, or
 
 Identical content is stored once, but new versions still grow the object store.
 Recovery Home shows object-store use and the configured budget. Smart retention
-in v1.0.3 is planning/dry-run only, so it never removes history automatically.
+in v1.1.0 is planning/dry-run only, so it never removes history automatically.

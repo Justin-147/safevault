@@ -50,4 +50,8 @@ document.addEventListener("DOMContentLoaded", () => {
     button.disabled = true;
     button.textContent = button.dataset.submitLabel || "正在处理…";
   });
+
+  if (document.querySelector("[data-storage-migration-active]")) {
+    window.setTimeout(() => window.location.reload(), 3000);
+  }
 });

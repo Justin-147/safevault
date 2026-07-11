@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+## 1.1.0 - 2026-07-12
+
+SafeVault 1.1.0 prevents recovery history from unexpectedly filling the system
+drive and adds a verified path for moving an existing vault.
+
+Added:
+- The Windows installer asks where SafeVault recovery data should be stored and
+  recommends a non-system drive when one is available.
+- Recovery Home now has a Storage page showing the active data location, object
+  store size, free space, target budget, per-root minimum storage estimates, and
+  the largest tracked files.
+- Existing vaults can be migrated to a new empty folder. Migration stops
+  background protection, checks free space, copies a transactionally consistent
+  SQLite database, verifies object hashes, switches the location atomically, and
+  deletes the old copy only after explicit confirmation.
+- `safevault storage status`, `analyze`, `budget`, and `migrate` provide the same
+  storage controls for advanced users.
+
+Changed:
+- New installations use a 10 GB storage target instead of 100 GB. The target is
+  deliberately soft: SafeVault never deletes the last restorable version merely
+  to reach the number.
+- Child-process logs are stored in a small runtime directory outside the movable
+  vault, allowing Windows to release the old data folder after migration.
+- The storage-location pointer uses UTF-8 and supports non-ASCII Windows paths.
+
 ## 1.0.3 - 2026-07-11
 
 SafeVault 1.0.3 fixes Windows background-status reporting and closes a startup

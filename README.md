@@ -53,7 +53,9 @@ and uninstall details.
 
 The first-run wizard recommends existing folders such as Desktop, Documents,
 and Pictures. Large project workspaces are optional, and custom paths can be
-added directly. Select only the folders you want to protect. Setup returns
+added directly. The Windows installer and onboarding ask where recovery data
+should live; choose a non-system drive such as `D:\SafeVaultData` when
+available. Select only the folders you want to protect. Setup returns
 immediately while SafeVault builds initial recovery points in the background;
 the browser page can then be closed.
 
@@ -97,6 +99,21 @@ SQLite records protected roots, versions, deletion markers, events, snapshots,
 and recovery points. Identical content is stored once. Restore verifies object
 content before writing it back atomically.
 
+## Storage Location And The 10 GB Target
+
+Recovery Home's Storage page shows actual use, free space, the configured
+target, per-root minimum estimates, and the largest tracked files. It can move
+an existing vault to a new empty folder. Migration copies and verifies data
+before switching locations and removes the old copy only after explicit
+confirmation.
+
+The default 10 GB value is a soft management target, not a destructive hard
+cap. If one latest restorable copy of every selected file already exceeds 10
+GB, no retention policy can preserve those files and also meet the target.
+Narrow the protected scope or exclude replaceable media, installers, models,
+datasets, and generated outputs. Identical content is deduplicated, but distinct
+whole-file versions still consume object storage.
+
 ## Safety Boundaries
 
 - SafeVault can restore only content captured after protection began.
@@ -105,8 +122,8 @@ content before writing it back atomically.
   containment and does not isolate credentials, the network, or the user account.
 - The watcher is best-effort; completed versions are the recovery source of
   truth.
-- Smart retention is planning/dry-run only in v1.0.3 and does not silently
-  remove history.
+- The 10 GB target is a soft budget. Smart retention remains planning/dry-run
+  only in v1.1.0 and does not silently remove history.
 - Local history does not protect against disk loss. Keep exports on an external
   disk, NAS, or another machine.
 
@@ -125,5 +142,5 @@ python -m safevault --help
 bash scripts/release_check.sh
 ```
 
-SafeVault 1.0.3 requires Python 3.12 or later. See [CHANGELOG.md](CHANGELOG.md)
-and [v1.0.3 release notes](docs/releases/v1.0.3.md) for release details.
+SafeVault 1.1.0 requires Python 3.12 or later. See [CHANGELOG.md](CHANGELOG.md)
+and [v1.1.0 release notes](docs/releases/v1.1.0.md) for release details.

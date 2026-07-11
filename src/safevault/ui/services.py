@@ -42,6 +42,16 @@ from safevault.retention import RetentionPlan, build_retention_plan
 from safevault.sandbox import apply_sandbox, get_sandbox, list_sandboxes
 from safevault.snapshot import create_snapshot
 from safevault.startup import install_user_startup, uninstall_user_startup
+from safevault.storage import (
+    MIGRATION_CONFIRMATION,
+    analyze_storage,
+    get_storage_status,
+    migrate_storage,
+    queue_migration_state,
+    read_migration_state,
+    set_storage_budget,
+    validate_storage_destination,
+)
 from safevault.ui.schemas import (
     DashboardStatus,
     DeletedEntry,
@@ -208,6 +218,18 @@ def onboarding_candidates_for_ui() -> list[dict[str, object]]:
     ]
 
 
+def onboarding_storage_for_ui() -> dict[str, object]:
+    status = get_storage_status()
+    suggested = status.home
+    if os.name == "nt" and status.home == status.default_home and Path("D:/").exists():
+        suggested = str(Path("D:/SafeVaultData"))
+    return {
+        "current": status.home,
+        "suggested": suggested,
+        "budget_gb": load_config().retention.max_vault_size_gb,
+    }
+
+
 def complete_onboarding_from_ui(
     *,
     roots: list[str],
@@ -217,6 +239,8 @@ def complete_onboarding_from_ui(
     startup_enabled: bool = False,
     startup_configured: bool = False,
     skip_roots: bool = False,
+    storage_location: str = "",
+    storage_budget_gb: int = 10,
 ) -> dict[str, object]:
     created_roots: list[int] = []
     if startup_enabled and not startup_supported():
@@ -228,6 +252,32 @@ def complete_onboarding_from_ui(
         backup_schedule=backup_schedule,
         skip_roots=skip_roots,
     )
+    requested_storage = storage_location.strip()
+    if requested_storage:
+        target = Path(requested_storage).expanduser().resolve(strict=False)
+        current = get_safevault_home().resolve(strict=False)
+        if target != current:
+            validate_storage_destination(
+                target,
+                additional_protected_roots=[path for path, _profile in selected_roots],
+            )
+            if backup_target.strip():
+                backup = Path(backup_target).expanduser().resolve(strict=False)
+                if (
+                    backup == target
+                    or backup.is_relative_to(target)
+                    or target.is_relative_to(backup)
+                ):
+                    raise SafeVaultError(
+                        "backup target must not overlap the SafeVault data location"
+                    )
+            migrate_storage(
+                target,
+                remove_source=True,
+                confirmation=MIGRATION_CONFIRMATION,
+                deep_verify=True,
+            )
+    set_storage_budget(storage_budget_gb)
     for root_path, profile in selected_roots:
         try:
             root_id = add_root_from_ui(root_path, profile)
@@ -250,6 +300,63 @@ def complete_onboarding_from_ui(
         "roots_count": len(created_roots),
         "daemon_started": daemon_started,
     }
+
+
+def storage_for_ui() -> dict[str, object]:
+    status = get_storage_status()
+    analysis = analyze_storage(largest_limit=15)
+    migration = read_migration_state()
+    return {
+        "status": status,
+        "object_store_display": _format_bytes(status.object_store_bytes),
+        "total_display": _format_bytes(status.total_bytes),
+        "free_display": _format_bytes(status.free_bytes),
+        "minimum_display": _format_bytes(analysis.minimum_recoverable_bytes),
+        "root_usage": [
+            {
+                "root_path": item.root_path,
+                "minimum_display": _format_bytes(item.minimum_bytes),
+                "unique_objects": item.unique_objects,
+            }
+            for item in analysis.root_usage
+        ],
+        "largest_files": [
+            {
+                "root_path": item.root_path,
+                "rel_path": item.rel_path,
+                "size_display": _format_bytes(item.size),
+            }
+            for item in analysis.largest_files
+        ],
+        "migration": migration,
+        "migration_confirmation": MIGRATION_CONFIRMATION,
+    }
+
+
+def set_storage_budget_from_ui(gigabytes: int) -> None:
+    set_storage_budget(gigabytes)
+
+
+def start_storage_migration_from_ui(
+    destination: str,
+    *,
+    remove_source: bool,
+    confirmation: str,
+) -> None:
+    current = get_safevault_home().resolve(strict=False)
+    target = validate_storage_destination(Path(destination))
+    state = read_migration_state()
+    if state is not None and state.status in {"queued", "running"}:
+        raise SafeVaultError("a storage migration is already running")
+    if remove_source and confirmation != MIGRATION_CONFIRMATION:
+        raise SafeVaultError(
+            f"deleting the old copy requires confirmation: {MIGRATION_CONFIRMATION}"
+        )
+    queue_migration_state(current, target)
+    args = ["storage", "migrate", str(target), "--stop-daemon", "--restart-daemon"]
+    if remove_source:
+        args.extend(["--remove-source", "--confirm", MIGRATION_CONFIRMATION])
+    spawn_safevault(args)
 
 
 def validate_onboarding_inputs(

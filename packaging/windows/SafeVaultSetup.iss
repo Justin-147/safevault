@@ -1,5 +1,5 @@
 #define MyAppName "SafeVault"
-#define MyAppVersion "1.0.3"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "SafeVault"
 #define MyAppExeName "safevault.exe"
 
@@ -16,8 +16,8 @@ Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
-ArchitecturesAllowed=x64
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
 RestartApplications=no
 
@@ -47,3 +47,86 @@ Type: files; Name: "{userstartup}\SafeVault Daemon.cmd"
 Type: files; Name: "{userstartup}\SafeVault Tray.cmd"
 Type: files; Name: "{userstartup}\SafeVault Daemon.vbs"
 Type: files; Name: "{userstartup}\SafeVault Tray.vbs"
+
+[Code]
+var
+  StoragePage: TInputDirWizardPage;
+  ExistingVault: Boolean;
+
+function StoragePointerPath(): String;
+begin
+  Result := ExpandConstant('{userprofile}\.safevault-location');
+end;
+
+function DefaultLegacyStorage(): String;
+begin
+  Result := ExpandConstant('{userprofile}\.safevault');
+end;
+
+procedure InitializeWizard();
+var
+  ExistingLocations: TArrayOfString;
+  SuggestedLocation: String;
+begin
+  if LoadStringsFromFile(StoragePointerPath(), ExistingLocations) and
+    (GetArrayLength(ExistingLocations) > 0) then
+    SuggestedLocation := Trim(ExistingLocations[0])
+  else
+    SuggestedLocation := DefaultLegacyStorage();
+
+  ExistingVault := FileExists(AddBackslash(SuggestedLocation) + 'vault.db') or
+    FileExists(AddBackslash(DefaultLegacyStorage()) + 'vault.db');
+
+  StoragePage := CreateInputDirPage(
+    wpSelectDir,
+    'SafeVault data location',
+    'Choose where recoverable versions are stored',
+    'Use a non-system drive when available. Existing installations must be moved from SafeVault Storage settings.',
+    False,
+    ''
+  );
+  StoragePage.Add('');
+  if not ExistingVault then begin
+    if DirExists('D:\') then
+      SuggestedLocation := 'D:\SafeVaultData'
+    else
+      SuggestedLocation := ExpandConstant('{localappdata}\SafeVaultData');
+  end;
+  StoragePage.Values[0] := SuggestedLocation;
+  if ExistingVault then begin
+    StoragePage.Edits[0].Enabled := False;
+    StoragePage.Buttons[0].Enabled := False;
+  end;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  SelectedPath: String;
+begin
+  Result := True;
+  if CurPageID <> StoragePage.ID then
+    Exit;
+  SelectedPath := RemoveBackslashUnlessRoot(ExpandFileName(StoragePage.Values[0]));
+  if SelectedPath = ExtractFileDrive(SelectedPath) + '\' then begin
+    MsgBox('SafeVault data cannot be stored at the root of a drive.', mbError, MB_OK);
+    Result := False;
+    Exit;
+  end;
+  StoragePage.Values[0] := SelectedPath;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  StorageLocations: TArrayOfString;
+begin
+  if (CurStep = ssPostInstall) and (not ExistingVault) then begin
+    if not ForceDirectories(StoragePage.Values[0]) then
+      RaiseException('SafeVault could not create the selected data folder.');
+    SetArrayLength(StorageLocations, 1);
+    StorageLocations[0] := StoragePage.Values[0];
+    if not SaveStringsToUTF8FileWithoutBOM(
+      StoragePointerPath(), StorageLocations, False
+    ) then
+      RaiseException('SafeVault could not save the selected data location.');
+  end;
+end;

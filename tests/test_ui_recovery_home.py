@@ -90,7 +90,7 @@ def test_dashboard_displays_daemon_and_backup_details(
     assert "下次备份" in response.text
     assert "后台消息" in response.text
     assert "本地存储" in response.text
-    assert "100 GB" in response.text
+    assert "10 GB" in response.text
 
 
 def test_recovery_home_recent_modified_lists_each_file_once(sv_home, project) -> None:

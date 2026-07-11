@@ -14,8 +14,34 @@ safevault backup status
 GUI 首页会显示受保护目录、daemon 健康状态、最近删除、最近修改、恢复时间线、
 搜索和一键恢复入口。
 
-状态栏还会显示本地对象库用量和配置的空间预算。v1.0.3 的智能保留只提供规划
-与 dry-run，因此 SafeVault 不会静默删除历史版本。
+状态栏还会显示本地对象库用量和配置的空间预算。v1.1.0 的默认目标为 10GB；智能
+保留仍只提供规划与 dry-run，因此 SafeVault 不会静默删除历史版本。
+
+## 管理存储空间
+
+在 Recovery Home 顶部打开“存储”，可以看到：
+
+- 当前 SafeVault 数据位置、对象库和总占用；
+- 当前磁盘剩余空间以及是否位于系统盘；
+- 每个保护目录即使只留最新可恢复版本仍需的最低空间；
+- 占用最大的已跟踪文件。
+
+修改“空间目标”只会调整提醒值。若最低可恢复体积已经超过 10GB，应从“保护目录”
+缩小范围，优先排除可重新下载或生成的视频、安装包、模型、数据集、构建产物。
+不要直接在文件管理器里删除 SafeVault 对象库。
+
+迁移到其他磁盘时，选择一个空目录。SafeVault 会停止后台保护、检查目标剩余空间、
+复制数据库和对象、校验后再切换。若希望释放原磁盘空间，勾选删除旧副本并输入
+`MOVE STORAGE`；校验失败时原数据不会被删除。大 vault 逐个校验可能需要较长时间。
+
+高级用户可使用：
+
+```bash
+safevault storage status
+safevault storage analyze
+safevault storage budget 10
+safevault storage migrate D:\SafeVaultData --remove-source --confirm "MOVE STORAGE"
+```
 
 ## 保护文件夹
 
