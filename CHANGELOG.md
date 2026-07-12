@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 1.1.1 - 2026-07-12
+
+Fixed:
+- The Windows installer now resolves the profile directory through the supported
+  `{%USERPROFILE}` environment-variable constant. v1.1.0 used the unsupported
+  `{userprofile}` constant and stopped with a runtime error before setup.
+- Installer tests now reject the unsupported constant so the failure cannot
+  return unnoticed.
+
 ## 1.1.0 - 2026-07-12
 
 SafeVault 1.1.0 prevents recovery history from unexpectedly filling the system

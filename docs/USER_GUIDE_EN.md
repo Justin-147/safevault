@@ -17,7 +17,7 @@ recent modified files, the restore timeline, search, and quick restore actions.
 Users do not need to know snapshot IDs for common recovery.
 
 The status strip also shows local object-store use against the configured
-storage budget. The v1.1.0 default target is 10 GB. Smart retention remains
+storage budget. The v1.1.1 default target is 10 GB. Smart retention remains
 planning/dry-run only, so SafeVault does not silently remove historical
 versions.
 

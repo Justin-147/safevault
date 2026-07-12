@@ -1,5 +1,5 @@
 #define MyAppName "SafeVault"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.1.1"
 #define MyAppPublisher "SafeVault"
 #define MyAppExeName "safevault.exe"
 
@@ -55,12 +55,12 @@ var
 
 function StoragePointerPath(): String;
 begin
-  Result := ExpandConstant('{userprofile}\.safevault-location');
+  Result := ExpandConstant('{%USERPROFILE}\.safevault-location');
 end;
 
 function DefaultLegacyStorage(): String;
 begin
-  Result := ExpandConstant('{userprofile}\.safevault');
+  Result := ExpandConstant('{%USERPROFILE}\.safevault');
 end;
 
 procedure InitializeWizard();
