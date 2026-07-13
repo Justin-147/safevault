@@ -2,6 +2,46 @@
 {% block content %}
 <h1>Export / Import</h1>
 <section class="panel">
+  <div class="panel-heading">
+    <div>
+      <h2>备份管理</h2>
+      <p class="muted">在这里查看和删除 SafeVault 创建的外部备份文件。</p>
+    </div>
+    {% if backup_status and backup_status.enabled %}
+    <form method="post" action="/backup/disable">
+      <button type="submit" onclick="return confirm('停止自动备份？已有备份文件会保留。')">停止自动备份</button>
+    </form>
+    {% endif %}
+  </div>
+  {% if backup_status and backup_status.target %}
+  <p><strong>备份位置：</strong>{{ backup_status.target }}</p>
+  <p><strong>状态：</strong>{{ "自动备份已开启" if backup_status.enabled else "自动备份已停止" }}；计划：{{ backup_status.schedule }}</p>
+  <table>
+    <thead><tr><th>备份文件</th><th>大小</th><th>修改时间</th><th>操作</th></tr></thead>
+    <tbody>
+    {% for backup in backup_files %}
+      <tr>
+        <td>{{ backup.name }}</td>
+        <td>{{ backup.size_display }}</td>
+        <td><time datetime="{{ backup.modified_at }}" data-local-time>{{ backup.modified_at }}</time></td>
+        <td>
+          <form method="post" action="/backup/delete">
+            <input type="hidden" name="filename" value="{{ backup.name }}">
+            <input type="hidden" name="confirmed" value="true">
+            <button class="danger-button" type="submit" onclick="return confirm('确定删除备份文件 {{ backup.name }}？此操作无法撤销。')">删除</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4">备份目录中暂时没有 SafeVault 备份文件。</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>尚未配置外部备份。首次设置时可选择备份目录。</p>
+  {% endif %}
+</section>
+<section class="panel">
   <h2>Export</h2>
   <form method="post" action="/export-import/export">
     <label>Output path <input name="output" required></label>

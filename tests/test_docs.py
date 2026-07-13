@@ -94,7 +94,7 @@ def test_chinese_readme_has_required_command_and_status_terms() -> None:
         "safevault restore",
         "safevault ui",
         "不是裸盘恢复",
-        "1.1.3",
+        "1.1.4",
     ):
         assert phrase in text
 

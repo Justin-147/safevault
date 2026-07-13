@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## 1.1.4 - 2026-07-13
+
+Added:
+- Recovery Home now lists SafeVault-created external backup archives with their
+  size and modification time.
+- External backup archives can be deleted individually from Backup Management,
+  and automatic backup can be stopped without deleting existing archives.
+
+Improved:
+- Protect Folders now exposes Stop Protection and Delete History actions
+  directly in the folder list.
+- Permanent history removal uses a clear impact preview and final confirmation
+  instead of requiring users to type a root ID or full path.
+- Successful history removal returns directly to the protected-folder list.
+
+Safety:
+- History removal continues to leave the original protected folder untouched.
+- Backup deletion accepts only regular SafeVault archive files directly inside
+  the configured external backup directory; traversal paths, symlinks, and
+  unrelated files are rejected.
+
 ## 1.1.3 - 2026-07-13
 
 Fixed:

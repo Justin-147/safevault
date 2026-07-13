@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import time
 from dataclasses import replace
@@ -10,7 +11,7 @@ from pathlib import Path
 from typing import cast
 
 from safevault import __version__
-from safevault.backup import configure_backup, get_backup_status, run_backup
+from safevault.backup import configure_backup, disable_backup, get_backup_status, run_backup
 from safevault.config import (
     VALID_PROFILES,
     BackupSchedule,
@@ -62,6 +63,10 @@ from safevault.ui.schemas import (
     VersionEntry,
 )
 from safevault.verify import VerifyResult, run_verify
+
+_BACKUP_FILE_RE = re.compile(
+    r"^safevault-(?:latest|backup-\d{8}-\d{6}-\d{6})\.tar(?:\.gz)?$"
+)
 
 
 def _object_store_size() -> int:
@@ -155,6 +160,7 @@ def _root_summary_from_row(row) -> RootSummary:
         id=root_id,
         path=str(row["path"]),
         profile=str(row["profile"]),
+        enabled=bool(row["enabled"]),
         exists=Path(str(row["path"])).exists(),
         active_count=active_count,
         deleted_count=deleted_count,
@@ -171,6 +177,7 @@ def list_roots_for_ui() -> list[RootSummary]:
             """
             SELECT
               r.*,
+              COALESCE(p.enabled, 0) AS enabled,
               SUM(CASE WHEN f.status = 'active' THEN 1 ELSE 0 END) AS active_count,
               SUM(CASE WHEN f.status = 'deleted' THEN 1 ELSE 0 END) AS deleted_count,
               (
@@ -179,6 +186,7 @@ def list_roots_for_ui() -> list[RootSummary]:
                 WHERE s.root_id = r.id
               ) AS last_snapshot
             FROM roots r
+            LEFT JOIN protection_policies p ON p.root_id = r.id
             LEFT JOIN files f ON f.root_id = r.id
             GROUP BY r.id
             ORDER BY r.path
@@ -445,6 +453,67 @@ def backup_status_for_ui():
 
 def run_backup_from_ui():
     return run_backup()
+
+
+def disable_backup_from_ui() -> None:
+    disable_backup()
+
+
+def list_backup_files_for_ui() -> list[dict[str, object]]:
+    target = _validated_backup_target_for_ui(required=False)
+    if target is None or not target.is_dir():
+        return []
+    backups: list[dict[str, object]] = []
+    for path in target.iterdir():
+        if not _is_managed_backup_file(path):
+            continue
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        backups.append(
+            {
+                "name": path.name,
+                "size": stat.st_size,
+                "size_display": _format_bytes(stat.st_size),
+                "modified_at": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(
+                    timespec="seconds"
+                ),
+            }
+        )
+    return sorted(backups, key=lambda item: str(item["modified_at"]), reverse=True)
+
+
+def delete_backup_file_from_ui(filename: str, *, confirmed: bool) -> Path:
+    if not confirmed:
+        raise SafeVaultError("请确认删除这个备份文件")
+    if Path(filename).name != filename or not _BACKUP_FILE_RE.fullmatch(filename):
+        raise SafeVaultError("不是可由 SafeVault 管理的备份文件")
+    target = _validated_backup_target_for_ui(required=True)
+    assert target is not None
+    path = target / filename
+    if not _is_managed_backup_file(path):
+        raise SafeVaultError("备份文件不存在或不是普通文件")
+    path.unlink()
+    return path
+
+
+def _validated_backup_target_for_ui(*, required: bool) -> Path | None:
+    configured = load_config().backup.target
+    if not configured:
+        if required:
+            raise SafeVaultError("尚未配置外部备份目录")
+        return None
+    validate_backup_target(configured, protected_roots=_existing_root_paths())
+    return Path(configured).expanduser().resolve(strict=False)
+
+
+def _is_managed_backup_file(path: Path) -> bool:
+    return (
+        bool(_BACKUP_FILE_RE.fullmatch(path.name))
+        and path.is_file()
+        and not path.is_symlink()
+    )
 
 
 def _root_id_for_path(path: Path) -> int:

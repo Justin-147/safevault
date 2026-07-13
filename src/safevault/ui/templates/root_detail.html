@@ -27,12 +27,20 @@
 <section class="panel danger-panel">
   <h2>彻底移除历史记录</h2>
   <p><strong>高风险操作：</strong>这会删除该目录在数据库中的文件、版本、恢复点和事件索引，之后无法再通过 SafeVault 恢复。底层对象文件暂不删除，但后续清理可能回收空间。</p>
-  <p>请先预览，再输入目录 ID 或完整路径确认。</p>
-  <form method="post" action="/roots/{{ detail.root.id }}/unprotect">
-    <button name="mode" value="dry-run" type="submit">预览</button>
-    <input name="confirmation" placeholder="目录 ID 或完整路径">
-    <button name="mode" value="confirm" type="submit">确认彻底移除</button>
+  {% if plan %}
+  <p>将删除：{{ plan.files }} 个文件记录、{{ plan.versions }} 个历史版本、{{ plan.snapshots }} 个恢复点。</p>
+  <form method="post" action="/roots/{{ plan.root_id }}/unprotect">
+    <input type="hidden" name="mode" value="confirm">
+    <input type="hidden" name="confirmation" value="{{ plan.root_id }}">
+    <button class="danger-button" type="submit" onclick="return confirm('最后确认：删除这个文件夹的全部 SafeVault 历史？此操作无法撤销。')">确认删除全部历史</button>
+    <a href="/roots/{{ plan.root_id }}">取消</a>
   </form>
+  {% else %}
+  <p>先查看将删除多少历史数据，再进行确认。</p>
+  <form method="post" action="/roots/{{ detail.root.id }}/unprotect">
+    <button name="mode" value="dry-run" type="submit">查看删除影响</button>
+  </form>
+  {% endif %}
 </section>
 <h2>最近恢复点</h2>
 <table><tr><th>ID</th><th>原因</th><th>时间</th><th>状态</th></tr>
@@ -46,9 +54,5 @@
 <tr><td>{{ item.rel_path }}</td><td>{{ item.captured_at }}</td></tr>
 {% endfor %}
 </table>
-{% endif %}
-{% if plan %}
-<h2>彻底移除预览</h2>
-<pre>{{ plan }}</pre>
 {% endif %}
 {% endblock %}

@@ -141,6 +141,21 @@ button {
 .danger-panel strong {
   color: #a40e26;
 }
+.danger-button {
+  background: #cf222e;
+  border: 1px solid #a40e26;
+  border-radius: 4px;
+  color: white;
+}
+.row-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.row-actions form {
+  margin: 0;
+}
 small {
   color: #57606a;
   word-break: break-all;

@@ -33,6 +33,7 @@ class RootSummary:
     id: int
     path: str
     profile: str
+    enabled: bool
     exists: bool
     active_count: int
     deleted_count: int

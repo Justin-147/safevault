@@ -344,7 +344,14 @@ def build_router() -> APIRouter:
             if mode == "confirm":
                 plan = services.unprotect_from_ui(root_id, confirmation)
                 message = "目录及历史索引已移除；底层对象文件尚未自动清理。"
-                detail = None
+                return _render(
+                    request,
+                    "roots.html",
+                    token,
+                    roots=services.list_roots_for_ui(),
+                    profiles=sorted(VALID_PROFILES),
+                    message=message,
+                )
             else:
                 plan = services.plan_unprotect_from_ui(root_id)
                 detail = services.get_root_detail(root_id)
@@ -533,7 +540,51 @@ def build_router() -> APIRouter:
     def export_import_page(
         request: Request, token: str = Depends(require_token)
     ) -> HTMLResponse:
-        return _render(request, "export_import.html", token)
+        return _render(
+            request,
+            "export_import.html",
+            token,
+            backup_status=services.backup_status_for_ui(),
+            backup_files=services.list_backup_files_for_ui(),
+        )
+
+    @router.post("/backup/disable", response_class=HTMLResponse)
+    def backup_disable_action(
+        request: Request, token: str = Depends(require_token)
+    ) -> HTMLResponse:
+        services.disable_backup_from_ui()
+        return _render(
+            request,
+            "export_import.html",
+            token,
+            backup_status=services.backup_status_for_ui(),
+            backup_files=services.list_backup_files_for_ui(),
+            message="已停止自动备份，现有备份文件仍然保留。",
+        )
+
+    @router.post("/backup/delete", response_class=HTMLResponse)
+    def backup_delete_action(
+        request: Request,
+        filename: str = Form(...),
+        confirmed: bool = Form(False),
+        token: str = Depends(require_token),
+    ) -> HTMLResponse:
+        message = None
+        error = None
+        try:
+            services.delete_backup_file_from_ui(filename, confirmed=confirmed)
+            message = f"已删除备份文件：{filename}"
+        except SafeVaultError as exc:
+            error = _error_message(exc)
+        return _render(
+            request,
+            "export_import.html",
+            token,
+            backup_status=services.backup_status_for_ui(),
+            backup_files=services.list_backup_files_for_ui(),
+            message=message,
+            error=error,
+        )
 
     @router.post("/backup/run", response_class=HTMLResponse)
     def backup_run_action(
@@ -589,7 +640,13 @@ def build_router() -> APIRouter:
         except SafeVaultError as exc:
             error = _error_message(exc)
         return _render(
-            request, "export_import.html", token, export_result=result, error=error
+            request,
+            "export_import.html",
+            token,
+            backup_status=services.backup_status_for_ui(),
+            backup_files=services.list_backup_files_for_ui(),
+            export_result=result,
+            error=error,
         )
 
     @router.post("/export-import/import", response_class=HTMLResponse)
@@ -619,7 +676,13 @@ def build_router() -> APIRouter:
         except SafeVaultError as exc:
             error = _error_message(exc)
         return _render(
-            request, "export_import.html", token, import_result=result, error=error
+            request,
+            "export_import.html",
+            token,
+            backup_status=services.backup_status_for_ui(),
+            backup_files=services.list_backup_files_for_ui(),
+            import_result=result,
+            error=error,
         )
 
     @router.get("/help", response_class=HTMLResponse)

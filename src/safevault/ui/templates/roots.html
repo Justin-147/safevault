@@ -13,18 +13,28 @@
   <button type="submit">开始保护</button>
 </form>
 <table>
-  <thead><tr><th>ID</th><th>路径</th><th>类型</th><th>可用</th><th>现有文件</th><th>已删除</th><th>最近保护点</th><th></th></tr></thead>
+  <thead><tr><th>路径</th><th>状态</th><th>文件</th><th>最近保护点</th><th>操作</th></tr></thead>
   <tbody>
   {% for root in roots %}
   <tr>
-    <td>{{ root.id }}</td>
-    <td>{{ root.path }}</td>
-    <td>{{ root.profile }}</td>
-    <td>{{ "是" if root.exists else "否" }}</td>
-    <td>{{ root.active_count }}</td>
-    <td>{{ root.deleted_count }}</td>
+    <td>{{ root.path }}<br><small>{{ root.profile }}</small></td>
+    <td>{{ "正在保护" if root.enabled else "已停止" }}{% if not root.exists %}<br><span class="warning">目录不可用</span>{% endif %}</td>
+    <td>现有 {{ root.active_count }} / 已删除 {{ root.deleted_count }}</td>
     <td>{{ root.last_snapshot or "" }}</td>
-    <td><a href="/roots/{{ root.id }}">打开</a></td>
+    <td>
+      <div class="row-actions">
+        <a href="/roots/{{ root.id }}">查看详情</a>
+        {% if root.enabled %}
+        <form method="post" action="/roots/{{ root.id }}/disable">
+          <button type="submit" onclick="return confirm('停止保护这个文件夹？已有历史会保留。')">停止保护</button>
+        </form>
+        {% endif %}
+        <form method="post" action="/roots/{{ root.id }}/unprotect">
+          <input type="hidden" name="mode" value="dry-run">
+          <button class="danger-button" type="submit">删除历史…</button>
+        </form>
+      </div>
+    </td>
   </tr>
   {% endfor %}
   </tbody>

@@ -176,6 +176,80 @@ def test_ui_labels_destructive_unprotect_as_history_removal(
     assert "之后无法再通过 SafeVault 恢复" in response.text
 
 
+def test_ui_can_preview_and_confirm_history_removal_without_typing_id(
+    sv_home: Path, project: Path
+) -> None:
+    (project / "tracked.txt").write_text("tracked", encoding="utf-8")
+    add_protected_root(project, "coding")
+    create_snapshot(project, reason="before-unprotect")
+    root_id = _root_id_for(project)
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        preview = client.post(
+            f"/roots/{root_id}/unprotect", data={"mode": "dry-run"}
+        )
+        assert preview.status_code == 200
+        assert "确认删除全部历史" in preview.text
+        assert 'name="confirmation"' in preview.text
+
+        removed = client.post(
+            f"/roots/{root_id}/unprotect",
+            data={"mode": "confirm", "confirmation": str(root_id)},
+        )
+
+    assert removed.status_code == 200
+    assert "目录及历史索引已移除" in removed.text
+    assert project.is_dir()
+    assert (project / "tracked.txt").read_text(encoding="utf-8") == "tracked"
+    assert _root_count() == 0
+
+
+def test_ui_lists_and_deletes_only_managed_external_backups(
+    sv_home: Path, tmp_path: Path
+) -> None:
+    target = tmp_path / "backups"
+    target.mkdir()
+    backup = target / "safevault-backup-20260713-120000-123456.tar.gz"
+    backup.write_bytes(b"backup")
+    latest = target / "safevault-latest.tar.gz"
+    latest.write_bytes(b"latest")
+    unrelated = target / "notes.txt"
+    unrelated.write_text("keep", encoding="utf-8")
+    outside = tmp_path / "outside.tar.gz"
+    outside.write_bytes(b"outside")
+    save_config(
+        SafeVaultConfig(
+            backup=BackupConfig(enabled=True, target=str(target), schedule="daily")
+        )
+    )
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        page = client.get("/export-import")
+        assert backup.name in page.text
+        assert latest.name in page.text
+        assert unrelated.name not in page.text
+
+        rejected = client.post(
+            "/backup/delete",
+            data={"filename": "../outside.tar.gz", "confirmed": "true"},
+        )
+        assert "不是可由 SafeVault 管理的备份文件" in rejected.text
+        assert outside.is_file()
+
+        deleted = client.post(
+            "/backup/delete",
+            data={"filename": backup.name, "confirmed": "true"},
+        )
+
+    assert deleted.status_code == 200
+    assert "已删除备份文件" in deleted.text
+    assert not backup.exists()
+    assert latest.is_file()
+    assert unrelated.is_file()
+
+
 def test_ui_add_root_rejects_safevault_home(sv_home: Path) -> None:
     sv_home.mkdir(parents=True)
 
