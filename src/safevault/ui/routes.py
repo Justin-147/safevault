@@ -78,6 +78,25 @@ def build_router() -> APIRouter:
         except SafeVaultError as exc:
             return _render(request, "dashboard.html", token, error=_error_message(exc))
 
+    @router.get("/api/dashboard/recent")
+    def dashboard_recent(
+        request: Request, token: str = Depends(require_token)
+    ) -> dict[str, object]:
+        _ = (request, token)
+        deleted = services.list_deleted_for_ui("7d")[:10]
+        return {
+            "deleted": [
+                {
+                    "root_path": entry.root_path,
+                    "rel_path": entry.rel_path,
+                    "absolute_path": entry.absolute_path,
+                    "detected_at": entry.detected_at,
+                }
+                for entry in deleted
+            ],
+            "modified": services.list_recent_modified_for_ui("7d")[:10],
+        }
+
     @router.get("/onboarding", response_class=HTMLResponse)
     def onboarding_page(
         request: Request, token: str = Depends(require_token)

@@ -3,7 +3,7 @@
 ## How far back can SafeVault restore a file?
 
 SafeVault can restore any version that is still referenced by its SQLite
-metadata and present in the BLAKE3 object store. v1.1.2 does not automatically
+metadata and present in the BLAKE3 object store. v1.1.3 does not automatically
 delete version history: smart retention is planning/dry-run only. Available
 history therefore depends on when protection started, captured changes, manual
 maintenance, and available disk space.
@@ -52,7 +52,7 @@ history is no longer needed.
 
 ## Can I move SafeVault data away from the C drive?
 
-Yes. In v1.1.2, open Recovery Home's Storage page and select an empty folder such
+Yes. In v1.1.3, open Recovery Home's Storage page and select an empty folder such
 as `D:\SafeVaultData`. SafeVault copies and verifies the database and objects
 before switching. It removes the old copy only when selected and confirmed with
 `MOVE STORAGE`. Do not move `.safevault` manually.
@@ -71,6 +71,13 @@ usually already compressed.
 Open Recovery Home, find the file under recent deletions, and choose Restore.
 SafeVault preserves an existing target before overwrite. Use the history view to
 restore a specific point or provide an alternate output path.
+
+## Why did a newly deleted file not appear immediately?
+
+Recovery Home refreshes recent deletions and modifications every five seconds.
+If the file still does not appear, confirm that its folder is currently watched.
+SafeVault can restore only content captured before deletion; a newly created file
+deleted before the first automatic save may not have a recoverable version.
 
 ## Is SafeVault a malware sandbox or full backup system?
 
@@ -123,4 +130,4 @@ import, and cleanup actions require words such as `ALLOW DELETE`, `PRUNE`, or
 
 Identical content is stored once, but new versions still grow the object store.
 Recovery Home shows object-store use and the configured budget. Smart retention
-in v1.1.2 is planning/dry-run only, so it never removes history automatically.
+in v1.1.3 is planning/dry-run only, so it never removes history automatically.

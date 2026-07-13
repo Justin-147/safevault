@@ -19,7 +19,7 @@ def test_windows_installer_assets_define_safevault_setup() -> None:
     assert "daemon run" in setup
     assert "tray" in setup
     assert "ui --open" in setup
-    assert 'MyAppVersion "1.1.2"' in setup
+    assert 'MyAppVersion "1.1.3"' in setup
     assert "Start SafeVault background protection" in setup
     assert 'Name: "tray"' in setup and "Flags: checkedonce" in setup
     assert "--collect-all pystray" in builder

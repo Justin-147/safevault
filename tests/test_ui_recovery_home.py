@@ -42,6 +42,77 @@ def test_recovery_home_shows_recent_deleted_and_modified(
     assert "CONFIRM" in response.text
 
 
+def test_recovery_home_live_feed_shows_file_deleted_after_page_load(
+    sv_home: Path, project: Path
+) -> None:
+    _complete_onboarding_config()
+    target = project / "deleted-after-open.txt"
+    target.write_text("recoverable", encoding="utf-8")
+    create_snapshot(project)
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        initial = client.get("/", params={"token": TOKEN})
+        assert initial.status_code == 200
+        before = client.get("/api/dashboard/recent")
+        assert all(
+            item["rel_path"] != "deleted-after-open.txt"
+            for item in before.json()["deleted"]
+        )
+
+        target.unlink()
+        create_snapshot(project)
+        response = client.get("/api/dashboard/recent")
+
+    assert response.status_code == 200
+    matches = [
+        item
+        for item in response.json()["deleted"]
+        if item["rel_path"] == "deleted-after-open.txt"
+    ]
+    assert len(matches) == 1
+    assert matches[0]["absolute_path"] == str(target)
+
+
+def test_recovery_home_live_feed_keeps_recent_modified_unique(
+    sv_home: Path, project: Path
+) -> None:
+    _complete_onboarding_config()
+    target = project / "live-frequent.txt"
+    target.write_text("one", encoding="utf-8")
+    create_snapshot(project)
+    target.write_text("two", encoding="utf-8")
+    create_snapshot(project)
+    target.write_text("three", encoding="utf-8")
+    create_snapshot(project)
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/", params={"token": TOKEN})
+        response = client.get("/api/dashboard/recent")
+
+    assert response.status_code == 200
+    matches = [
+        item
+        for item in response.json()["modified"]
+        if item["rel_path"] == "live-frequent.txt"
+    ]
+    assert len(matches) == 1
+
+
+def test_recovery_home_uses_plain_language_for_advanced_navigation(
+    sv_home: Path,
+) -> None:
+    _complete_onboarding_config()
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        response = client.get("/", params={"token": TOKEN})
+
+    assert response.status_code == 200
+    assert "AI 修改保护" in response.text
+    assert "健康与清理" in response.text
+    assert "外部备份" in response.text
+    assert "data-dashboard-live" in response.text
+
+
 def test_recovery_home_shows_version_timeline(sv_home: Path, project: Path) -> None:
     _complete_onboarding_config()
     target = project / "timeline-home.txt"

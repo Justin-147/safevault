@@ -52,6 +52,16 @@ button {
   margin: 12px 0;
   padding: 12px;
 }
+.panel-heading {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  justify-content: space-between;
+}
+.panel-heading h2 {
+  margin-bottom: 0.5em;
+}
 .warning {
   color: #9a6700;
   margin-left: 12px;

@@ -14,10 +14,17 @@ safevault backup status
 
 The GUI home page shows protected folders, daemon health, recent deleted files,
 recent modified files, the restore timeline, search, and quick restore actions.
-Users do not need to know snapshot IDs for common recovery.
+Users do not need to know snapshot IDs for common recovery. Recent deleted and
+modified files refresh automatically every five seconds.
+
+The advanced navigation uses plain-language labels:
+
+- **AI Change Protection** runs Codex and similar tools in a project copy first;
+- **Health & Cleanup** checks recovery-data integrity and removes unreferenced data;
+- **External Backup** copies recovery data to another location or imports a backup.
 
 The status strip also shows local object-store use against the configured
-storage budget. The v1.1.2 default target is 10 GB. Smart retention remains
+storage budget. The v1.1.3 default target is 10 GB. Smart retention remains
 planning/dry-run only, so SafeVault does not silently remove historical
 versions.
 
@@ -64,6 +71,10 @@ configured backup targets.
 Open `safevault ui --open`, find the file under recent deleted files, and choose
 Restore. Normal restore uses a local confirmation action; destructive or
 advanced operations still require explicit confirmation words.
+
+If a file does not appear, confirm that its folder is currently watched. A file
+must have been captured before deletion; a newly created file deleted before the
+first automatic save may not have recoverable content.
 
 ## Recover From AI Or Bulk Changes
 

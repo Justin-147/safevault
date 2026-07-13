@@ -28,16 +28,20 @@
 </section>
 {% endif %}
 
-<section class="recovery-layout">
+<section class="recovery-layout" data-dashboard-live>
   <div>
     <section class="panel">
-      <h2>最近删除的文件</h2>
+      <div class="panel-heading">
+        <h2>最近删除的文件</h2>
+        <small class="muted" data-dashboard-refresh-status>自动更新</small>
+      </div>
       <table>
-        <tr><th>文件</th><th>删除时间</th><th>操作</th></tr>
+        <thead><tr><th>文件</th><th>删除时间</th><th>操作</th></tr></thead>
+        <tbody data-recent-deleted>
         {% for entry in recent_deleted %}
         <tr>
           <td>{{ entry.rel_path }}<br><small>{{ entry.root_path }}</small></td>
-          <td>{{ entry.detected_at }}</td>
+          <td><time datetime="{{ entry.detected_at }}" data-local-time>{{ entry.detected_at }}</time></td>
           <td>
             <form method="post" action="/restore">
               <input type="hidden" name="file" value="{{ entry.absolute_path }}">
@@ -50,22 +54,25 @@
         {% else %}
         <tr><td colspan="3">最近没有删除记录。</td></tr>
         {% endfor %}
+        </tbody>
       </table>
     </section>
 
     <section class="panel">
       <h2>最近修改</h2>
       <table>
-        <tr><th>文件</th><th>变化</th><th>时间</th></tr>
+        <thead><tr><th>文件</th><th>变化</th><th>时间</th></tr></thead>
+        <tbody data-recent-modified>
         {% for entry in recent_modified %}
         <tr>
           <td>{{ entry.rel_path }}<br><small>{{ entry.root_path }}</small></td>
           <td>{{ entry.event_type }}</td>
-          <td>{{ entry.detected_at }}</td>
+          <td><time datetime="{{ entry.detected_at }}" data-local-time>{{ entry.detected_at }}</time></td>
         </tr>
         {% else %}
         <tr><td colspan="3">最近没有修改记录。</td></tr>
         {% endfor %}
+        </tbody>
       </table>
     </section>
 
@@ -112,11 +119,11 @@
   <aside class="panel side-panel">
     <h2>快捷操作</h2>
     <p><a href="/roots">添加保护文件夹</a></p>
-    <p><a href="/maintenance">运行健康检查</a></p>
+    <p><a href="/maintenance">健康检查与清理</a></p>
     <form method="post" action="/backup/run">
       <button type="submit">立即备份</button>
     </form>
-    <p><a href="/export-import">导出 / 导入</a></p>
+    <p><a href="/export-import">设置外部备份</a></p>
     {% if backup_status and not backup_status.enabled %}
     <p class="warning">还没有设置外部备份目录。如果本机磁盘损坏，SafeVault 本地对象库也可能丢失。</p>
     {% endif %}

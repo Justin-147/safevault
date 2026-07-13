@@ -9,6 +9,9 @@ def test_default_ignored_paths(project) -> None:
         project / "node_modules",
         project / ".venv",
         project / "dist",
+        project / "pytest-run-local",
+        project / "pytest-cache-files-local",
+        project / ".test-tmp-local",
         project / "a.pyc",
         project / "debug.log",
     ]

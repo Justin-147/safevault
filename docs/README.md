@@ -27,6 +27,7 @@ GitHub 用户通常先阅读仓库根目录的 [中文 README](../README.zh-CN.m
 
 ## Release Notes
 
+- [SafeVault v1.1.3](releases/v1.1.3.md)
 - [SafeVault v1.1.2](releases/v1.1.2.md)
 - [SafeVault v1.1.1](releases/v1.1.1.md)
 - [SafeVault v1.1.0](releases/v1.1.0.md)

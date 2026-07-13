@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 1.1.3 - 2026-07-13
+
+Fixed:
+- Recovery Home now refreshes recent deletions and modifications every five
+  seconds, so a deleted Desktop file appears without reopening or manually
+  refreshing the page.
+- Recent activity returned by the live dashboard remains limited to one latest
+  modification per file.
+- Pytest temporary directories are ignored by default so development test runs
+  do not pollute recovery history or consume object-store space.
+
+Improved:
+- Recovery Home displays deletion and modification timestamps in local time.
+- Advanced navigation now uses the clearer labels AI Change Protection, Health
+  & Cleanup, and External Backup, with short explanations on hover.
+- User guides explain live updates and why a file must have been captured before
+  it can be restored.
+
 ## 1.1.2 - 2026-07-13
 
 Changed:

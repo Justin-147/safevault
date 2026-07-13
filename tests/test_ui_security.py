@@ -95,6 +95,7 @@ def test_fastapi_testclient_importable() -> None:
 def test_ui_security_rejects_missing_tokens(sv_home: Path, project: Path) -> None:
     with TestClient(create_app(token=TOKEN)) as client:
         assert client.get("/").status_code == 403
+        assert client.get("/api/dashboard/recent").status_code == 403
         response = client.post(
             "/roots/add",
             data={"path": str(project), "profile": "coding"},
