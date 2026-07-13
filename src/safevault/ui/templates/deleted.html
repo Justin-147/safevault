@@ -1,28 +1,37 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Deleted Files</h1>
+<div data-deleted-live data-since="{{ since }}">
+<div class="panel-heading">
+  <h1>最近删除</h1>
+  <small class="muted" data-deleted-refresh-status>自动更新 · <span data-local-zone>本机时间</span></small>
+</div>
 <form method="get" action="/deleted">
   <select name="since">
     {% for item in ["24h", "7d", "30d"] %}<option value="{{ item }}" {% if item == since %}selected{% endif %}>{{ item }}</option>{% endfor %}
   </select>
-  <button type="submit">Filter</button>
+  <button type="submit">筛选</button>
 </form>
 <table>
-  <tr><th>Root</th><th>Path</th><th>Detected</th><th>Action</th></tr>
+  <thead><tr><th>保护目录</th><th>文件</th><th>删除时间</th><th>操作</th></tr></thead>
+  <tbody data-deleted-list>
   {% for entry in entries %}
   <tr>
     <td>{{ entry.root_path }}</td>
     <td>{{ entry.rel_path }}</td>
-    <td>{{ entry.detected_at }}</td>
+    <td><time datetime="{{ entry.detected_at }}" data-local-time>{{ entry.detected_at }}</time></td>
     <td>
       <form method="post" action="/restore">
         <input type="hidden" name="file" value="{{ entry.absolute_path }}">
         <input type="hidden" name="mode" value="latest">
         <input type="hidden" name="confirmation" value="CONFIRM">
-        <button type="submit" onclick="return confirm('Restore this file to its original location?')">Restore Latest</button>
+        <button type="submit" onclick="return confirm('恢复到原位置？')">恢复</button>
       </form>
     </td>
   </tr>
+  {% else %}
+  <tr><td colspan="4">这个时间范围内没有删除记录。</td></tr>
   {% endfor %}
+  </tbody>
 </table>
+</div>
 {% endblock %}

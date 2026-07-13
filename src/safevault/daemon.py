@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import sqlite3
 import time
 import uuid
 from contextlib import suppress
@@ -580,7 +581,18 @@ def _notify_skipped_unsafe_roots() -> None:
 
 
 def _record_deleted_from_watcher(root: Path, path: Path) -> None:
-    record_deleted_marker(root, path)
+    for attempt in range(2):
+        try:
+            record_deleted_marker(root, path)
+            return
+        except sqlite3.OperationalError as exc:
+            message = str(exc).casefold()
+            if "locked" not in message and "busy" not in message:
+                raise
+            if attempt == 0:
+                time.sleep(0.2)
+    # A scheduled snapshot will reconcile the deletion later. Most importantly,
+    # a temporary database lock must not terminate watchdog's observer thread.
 
 
 def _record_moved_from_watcher(root: Path, src: Path, dest: Path) -> None:

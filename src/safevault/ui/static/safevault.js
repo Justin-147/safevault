@@ -19,6 +19,16 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   };
 
+  const localZoneLabel = () => {
+    const offsetMinutes = -new Date().getTimezoneOffset();
+    const sign = offsetMinutes >= 0 ? "+" : "-";
+    const absolute = Math.abs(offsetMinutes);
+    const hours = String(Math.floor(absolute / 60)).padStart(2, "0");
+    const minutes = String(absolute % 60).padStart(2, "0");
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return `本机时间（UTC${sign}${hours}:${minutes}${zone ? `，${zone}` : ""}）`;
+  };
+
   const appendFileCell = (row, entry) => {
     const cell = row.insertCell();
     cell.append(document.createTextNode(entry.rel_path));
@@ -78,6 +88,52 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   };
 
+  const appendRestoreCell = (row, entry) => {
+    const action = row.insertCell();
+    const form = document.createElement("form");
+    form.method = "post";
+    form.action = "/restore";
+    [
+      ["file", entry.absolute_path],
+      ["mode", "latest"],
+      ["confirmation", "CONFIRM"],
+    ].forEach(([name, value]) => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = name;
+      input.value = value;
+      form.append(input);
+    });
+    const button = document.createElement("button");
+    button.type = "submit";
+    button.textContent = "恢复";
+    form.append(button);
+    form.addEventListener("submit", (event) => {
+      if (!window.confirm("恢复到原位置？")) event.preventDefault();
+    });
+    action.append(form);
+  };
+
+  const renderDeletedList = (entries) => {
+    const body = document.querySelector("[data-deleted-list]");
+    if (!body) return;
+    body.replaceChildren();
+    if (!entries.length) {
+      const row = body.insertRow();
+      const cell = row.insertCell();
+      cell.colSpan = 4;
+      cell.textContent = "这个时间范围内没有删除记录。";
+      return;
+    }
+    entries.forEach((entry) => {
+      const row = body.insertRow();
+      row.insertCell().textContent = entry.root_path;
+      row.insertCell().textContent = entry.rel_path;
+      appendTimeCell(row, entry.detected_at);
+      appendRestoreCell(row, entry);
+    });
+  };
+
   const eventLabels = {
     created: "新建",
     modified: "修改",
@@ -105,6 +161,40 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   formatLocalTimes();
+  document.querySelectorAll("[data-local-zone]").forEach((element) => {
+    element.textContent = localZoneLabel();
+  });
+
+  const deletedPage = document.querySelector("[data-deleted-live]");
+  if (deletedPage) {
+    const refreshStatus = document.querySelector("[data-deleted-refresh-status]");
+    const since = deletedPage.dataset.since || "24h";
+    let refreshInFlight = false;
+    const refreshDeleted = async () => {
+      if (refreshInFlight || document.hidden) return;
+      refreshInFlight = true;
+      try {
+        const response = await fetch(`/api/deleted?since=${encodeURIComponent(since)}`, {
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        renderDeletedList(payload.deleted || []);
+        if (refreshStatus) {
+          refreshStatus.textContent = `刚刚更新 · ${localZoneLabel()}`;
+        }
+      } catch (_error) {
+        if (refreshStatus) {
+          refreshStatus.textContent = `自动更新暂时不可用 · ${localZoneLabel()}`;
+        }
+      } finally {
+        refreshInFlight = false;
+      }
+    };
+    window.setTimeout(refreshDeleted, 1000);
+    window.setInterval(refreshDeleted, 5000);
+  }
 
   const dashboard = document.querySelector("[data-dashboard-live]");
   if (dashboard) {

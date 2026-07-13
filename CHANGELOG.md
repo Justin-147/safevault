@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 1.1.6 - 2026-07-14
+
+Fixed:
+- The Recent Deleted page now converts UTC timestamps to the browser's local
+  time zone instead of displaying raw UTC values.
+- A temporary SQLite busy or locked error during a watcher delete callback no
+  longer terminates the filesystem observer thread. SafeVault retries once and
+  leaves final reconciliation to the scheduled snapshot if the lock persists.
+
+Improved:
+- The Recent Deleted page refreshes automatically every five seconds, so files
+  deleted after the page was opened appear without a manual browser refresh.
+- The page identifies the active local UTC offset and IANA time-zone name and
+  uses clearer Chinese labels for filtering and restore actions.
+
 ## 1.1.5 - 2026-07-13
 
 Fixed:

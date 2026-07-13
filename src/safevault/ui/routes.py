@@ -97,6 +97,26 @@ def build_router() -> APIRouter:
             "modified": services.list_recent_modified_for_ui("7d")[:10],
         }
 
+    @router.get("/api/deleted")
+    def deleted_recent(
+        request: Request,
+        since: str = "24h",
+        token: str = Depends(require_token),
+    ) -> dict[str, object]:
+        _ = (request, token)
+        entries = services.list_deleted_for_ui(since)
+        return {
+            "deleted": [
+                {
+                    "root_path": entry.root_path,
+                    "rel_path": entry.rel_path,
+                    "absolute_path": entry.absolute_path,
+                    "detected_at": entry.detected_at,
+                }
+                for entry in entries
+            ]
+        }
+
     @router.get("/onboarding", response_class=HTMLResponse)
     def onboarding_page(
         request: Request, token: str = Depends(require_token)

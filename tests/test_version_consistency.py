@@ -19,11 +19,11 @@ def test_version_strings_are_consistent() -> None:
         encoding="utf-8"
     )
 
-    assert pyproject["project"]["version"] == __version__ == "1.1.5"
-    assert "## 1.1.5" in changelog
-    assert "v1.1.5" in readme
-    assert "1.1.5" in readme_zh
-    assert 'assert __version__ == "1.1.5"' in release_check
+    assert pyproject["project"]["version"] == __version__ == "1.1.6"
+    assert "## 1.1.6" in changelog
+    assert "v1.1.6" in readme
+    assert "1.1.6" in readme_zh
+    assert 'assert __version__ == "1.1.6"' in release_check
     assert '"safevault/ui/static/safevault.js"' in release_check
     assert '"safevault/ui/templates/storage.html"' in release_check
     assert "设置完成" in onboarding_smoke

@@ -73,6 +73,33 @@ def test_recovery_home_live_feed_shows_file_deleted_after_page_load(
     assert matches[0]["absolute_path"] == str(target)
 
 
+def test_recent_deleted_page_uses_local_time_and_live_feed(
+    sv_home: Path, project: Path
+) -> None:
+    _complete_onboarding_config()
+    target = project / "deleted-page-live.txt"
+    target.write_text("recoverable", encoding="utf-8")
+    create_snapshot(project)
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        page = client.get("/deleted", params={"token": TOKEN})
+        target.unlink()
+        create_snapshot(project)
+        feed = client.get("/api/deleted", params={"since": "24h"})
+
+    assert page.status_code == 200
+    assert 'data-deleted-live data-since="24h"' in page.text
+    assert "data-local-zone" in page.text
+    assert feed.status_code == 200
+    matches = [
+        item
+        for item in feed.json()["deleted"]
+        if item["rel_path"] == "deleted-page-live.txt"
+    ]
+    assert len(matches) == 1
+    assert matches[0]["absolute_path"] == str(target)
+
+
 def test_recovery_home_live_feed_keeps_recent_modified_unique(
     sv_home: Path, project: Path
 ) -> None:

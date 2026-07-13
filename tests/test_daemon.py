@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 
@@ -117,6 +118,22 @@ def test_record_deleted_marker_marks_tracked_file_deleted(sv_home, project) -> N
     assert file_row["status"] == "deleted"
     assert marker is not None
     assert notification is not None
+
+
+def test_watcher_database_lock_does_not_escape_callback(monkeypatch, project) -> None:
+    attempts = 0
+
+    def locked_record(root, path):
+        nonlocal attempts
+        attempts += 1
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(daemon_module, "record_deleted_marker", locked_record)
+    monkeypatch.setattr(daemon_module.time, "sleep", lambda _seconds: None)
+
+    daemon_module._record_deleted_from_watcher(project, project / "gone.txt")
+
+    assert attempts == 2
 
 
 def test_daemon_stop_creates_stop_request(runner, sv_home) -> None:
