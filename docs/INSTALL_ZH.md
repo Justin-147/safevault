@@ -1,6 +1,6 @@
 # SafeVault 安装指南
 
-SafeVault 1.1.1 提供稳定的本地连续文件保护。它继续使用
+SafeVault 1.1.2 提供稳定的本地连续文件保护。它继续使用
 BLAKE3 对象库和 SQLite 元数据，不会安装内核驱动，也不会开放远程管理端口。
 
 ## 安装
@@ -38,8 +38,10 @@ powershell -ExecutionPolicy Bypass -File scripts\build_windows_installer.ps1
 
 安装器会单独询问“SafeVault data location”。这里保存数据库和可恢复文件内容，
 不是程序安装目录。有 D 盘时默认建议 `D:\SafeVaultData`；用户可以改为其他非系统盘
-空目录。升级已有安装时，安装器不会擅自搬动旧数据，请安装后从 Recovery Home 的
-“存储”页面执行校验迁移。
+空目录。检测到已有数据时，安装器会显示当前位置说明页，而不是提供可编辑的目录框；
+这是为了避免在升级过程中直接搬动正在使用的对象库。安装完成后会自动打开 Recovery
+Home 的“存储”页面。选择新的空目录后，SafeVault 会停止后台保护、复制并校验全部
+数据，只有用户明确选择时才删除旧副本并释放原磁盘空间。
 
 ## 第一次启动
 

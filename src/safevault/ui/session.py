@@ -84,8 +84,10 @@ def clear_ui_session(session: UiSession | None = None) -> None:
     path.unlink(missing_ok=True)
 
 
-def ui_url(session: UiSession) -> str:
-    return f"http://{session.host}:{session.port}/?token={session.token}"
+def ui_url(session: UiSession, *, path: str = "/") -> str:
+    if path not in {"/", "/storage"}:
+        raise ValueError("unsupported SafeVault UI path")
+    return f"http://{session.host}:{session.port}{path}?token={session.token}"
 
 
 def ui_session_reachable(session: UiSession, *, timeout: float = 0.5) -> bool:

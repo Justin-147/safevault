@@ -1,5 +1,5 @@
 #define MyAppName "SafeVault"
-#define MyAppVersion "1.1.1"
+#define MyAppVersion "1.1.2"
 #define MyAppPublisher "SafeVault"
 #define MyAppExeName "safevault.exe"
 
@@ -38,7 +38,8 @@ Name: "tray"; Description: "Start SafeVault tray with Windows"; GroupDescription
 [Run]
 Filename: "{sys}\wscript.exe"; Parameters: """{app}\safevault-hidden.vbs"" daemon run"; Description: "Start SafeVault background protection"; Flags: nowait postinstall skipifsilent runhidden; Tasks: startup
 Filename: "{sys}\wscript.exe"; Parameters: """{app}\safevault-hidden.vbs"" tray"; Description: "Start SafeVault tray"; Flags: nowait postinstall skipifsilent runhidden; Tasks: tray
-Filename: "{sys}\wscript.exe"; Parameters: """{app}\safevault-hidden.vbs"" ui --open"; Description: "Launch SafeVault first-run wizard"; Flags: nowait postinstall skipifsilent runhidden
+Filename: "{sys}\wscript.exe"; Parameters: """{app}\safevault-hidden.vbs"" ui --open"; Description: "Launch first-time setup / 打开首次设置"; Flags: nowait postinstall skipifsilent runhidden; Check: ShouldOpenFirstRun
+Filename: "{sys}\wscript.exe"; Parameters: """{app}\safevault-hidden.vbs"" ui --open --page storage"; Description: "Open storage migration / 打开存储迁移"; Flags: nowait postinstall skipifsilent runhidden; Check: ShouldOpenStorageMigration
 
 [UninstallDelete]
 Type: files; Name: "{userstartup}\SafeVault Daemon.lnk"
@@ -51,6 +52,7 @@ Type: files; Name: "{userstartup}\SafeVault Tray.vbs"
 [Code]
 var
   StoragePage: TInputDirWizardPage;
+  ExistingStoragePage: TOutputMsgWizardPage;
   ExistingVault: Boolean;
 
 function StoragePointerPath(): String;
@@ -74,14 +76,20 @@ begin
   else
     SuggestedLocation := DefaultLegacyStorage();
 
-  ExistingVault := FileExists(AddBackslash(SuggestedLocation) + 'vault.db') or
-    FileExists(AddBackslash(DefaultLegacyStorage()) + 'vault.db');
+  if FileExists(AddBackslash(SuggestedLocation) + 'vault.db') then
+    ExistingVault := True
+  else if FileExists(AddBackslash(DefaultLegacyStorage()) + 'vault.db') then begin
+    SuggestedLocation := DefaultLegacyStorage();
+    ExistingVault := True;
+  end
+  else
+    ExistingVault := False;
 
   StoragePage := CreateInputDirPage(
     wpSelectDir,
-    'SafeVault data location',
-    'Choose where recoverable versions are stored',
-    'Use a non-system drive when available. Existing installations must be moved from SafeVault Storage settings.',
+    'SafeVault data location / 数据位置',
+    'Choose where recoverable versions are stored / 选择可恢复版本的存放位置',
+    'Use an empty folder on a non-system drive when available. / 建议选择非系统盘上的空文件夹。',
     False,
     ''
   );
@@ -93,10 +101,33 @@ begin
       SuggestedLocation := ExpandConstant('{localappdata}\SafeVaultData');
   end;
   StoragePage.Values[0] := SuggestedLocation;
-  if ExistingVault then begin
-    StoragePage.Edits[0].Enabled := False;
-    StoragePage.Buttons[0].Enabled := False;
-  end;
+  ExistingStoragePage := CreateOutputMsgPage(
+    StoragePage.ID,
+    'Existing SafeVault data detected / 检测到现有数据',
+    'This upgrade keeps the current data location / 本次升级保留当前位置',
+    'Current location / 当前位置:' + #13#10 + SuggestedLocation + #13#10#13#10 +
+    'To protect existing recovery data, Setup will not move it while upgrading. ' +
+    'After installation, SafeVault will open Storage management so you can choose ' +
+    'an empty folder on another drive and run a verified migration.' + #13#10#13#10 +
+    '为避免升级过程中损坏已有恢复数据，安装器不会直接搬移。安装完成后将自动打开“存储管理”，' +
+    '你可以选择其他磁盘上的空文件夹并执行带校验的迁移。请勿手动剪切数据目录。'
+  );
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := ((PageID = StoragePage.ID) and ExistingVault) or
+    ((PageID = ExistingStoragePage.ID) and (not ExistingVault));
+end;
+
+function ShouldOpenFirstRun(): Boolean;
+begin
+  Result := not ExistingVault;
+end;
+
+function ShouldOpenStorageMigration(): Boolean;
+begin
+  Result := ExistingVault;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;

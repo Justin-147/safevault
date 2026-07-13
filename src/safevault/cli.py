@@ -1166,6 +1166,7 @@ def ui_command(
     host: str = typer.Option("127.0.0.1", "--host"),
     port: int = typer.Option(8765, "--port", min=1, max=65535),
     open_browser: bool = typer.Option(False, "--open"),
+    page: Annotated[str, typer.Option("--page", hidden=True)] = "home",
     allow_public_bind: bool = typer.Option(False, "--allow-public-bind"),
     test_token: Annotated[str | None, typer.Option("--test-token", hidden=True)] = None,
 ) -> None:
@@ -1195,9 +1196,15 @@ def ui_command(
             raise SafeVaultError("Install UI dependencies with: pip install -e '.[ui]'") from exc
         raise
 
+    start_paths = {"home": "/", "storage": "/storage"}
+    try:
+        start_path = start_paths[page]
+    except KeyError as exc:
+        raise SafeVaultError("UI page must be 'home' or 'storage'") from exc
+
     existing = read_ui_session()
     if existing is not None and ui_session_reachable(existing):
-        url = ui_url(existing)
+        url = ui_url(existing, path=start_path)
         console.print("SafeVault local UI is already running")
         console.print(url)
         if open_browser:
@@ -1209,7 +1216,7 @@ def ui_command(
     token = test_token or secrets.token_urlsafe(32)
     session = create_ui_session(host, port, token)
     write_ui_session(session)
-    url = ui_url(session)
+    url = ui_url(session, path=start_path)
     console.print("SafeVault local UI")
     console.print("Local UI only. Not a remote admin console.")
     console.print(url)

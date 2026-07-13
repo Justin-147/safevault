@@ -1,6 +1,6 @@
 # SafeVault Install Guide
 
-SafeVault 1.1.1 provides stable local continuous file protection.
+SafeVault 1.1.2 provides stable local continuous file protection.
 It keeps BLAKE3 object storage and SQLite metadata on the local machine.
 
 ## Install
@@ -42,8 +42,12 @@ and should not leave terminal windows open.
 Setup has a separate **SafeVault data location** page. This is where the
 database and recoverable content live, not the application install directory.
 When a D drive is present, setup suggests `D:\SafeVaultData`; choose any suitable
-empty folder on a non-system drive. Upgrades never move an existing vault
-silently. Use Recovery Home's Storage page after upgrading.
+empty folder on a non-system drive. When Setup detects an existing vault, it
+shows the current location instead of an editable picker because moving a live
+vault inside an upgrade would be unsafe. After installation, Setup opens
+Recovery Home directly on Storage management. Choose an empty destination there;
+SafeVault stops background protection, copies and verifies the vault, and only
+removes the old copy when explicitly requested.
 
 ## First Run
 

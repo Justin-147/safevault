@@ -399,3 +399,24 @@ def test_ui_command_reuses_existing_reachable_session(
     assert result.exit_code == 0
     assert "already running" in result.output
     assert opened == ["http://127.0.0.1:8765/?token=existing-token"]
+
+
+def test_ui_command_can_open_storage_in_existing_session(
+    runner, sv_home: Path, monkeypatch
+) -> None:
+    session = UiSession(
+        host="127.0.0.1",
+        port=8765,
+        token="existing-token",
+        started_at="2026-07-10T00:00:00+00:00",
+        pid=123,
+    )
+    opened = []
+    monkeypatch.setattr("safevault.ui.session.read_ui_session", lambda: session)
+    monkeypatch.setattr("safevault.ui.session.ui_session_reachable", lambda item: True)
+    monkeypatch.setattr("safevault.cli.webbrowser.open", opened.append)
+
+    result = runner.invoke(app, ["ui", "--open", "--page", "storage"])
+
+    assert result.exit_code == 0
+    assert opened == ["http://127.0.0.1:8765/storage?token=existing-token"]

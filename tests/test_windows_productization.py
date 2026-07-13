@@ -19,7 +19,7 @@ def test_windows_installer_assets_define_safevault_setup() -> None:
     assert "daemon run" in setup
     assert "tray" in setup
     assert "ui --open" in setup
-    assert 'MyAppVersion "1.1.1"' in setup
+    assert 'MyAppVersion "1.1.2"' in setup
     assert "Start SafeVault background protection" in setup
     assert 'Name: "tray"' in setup and "Flags: checkedonce" in setup
     assert "--collect-all pystray" in builder
@@ -28,10 +28,14 @@ def test_windows_installer_assets_define_safevault_setup() -> None:
     assert "SafeVaultSetup.exe" in builder
     assert 'Filename: "{sys}\\wscript.exe"' in setup
     assert "safevault-hidden.vbs" in setup
-    assert "SafeVault data location" in setup
+    assert "SafeVault data location / 数据位置" in setup
     assert "D:\\SafeVaultData" in setup
     assert ".safevault-location" in setup
     assert "ExistingVault" in setup
+    assert "Existing SafeVault data detected / 检测到现有数据" in setup
+    assert "ShouldSkipPage" in setup
+    assert "ui --open --page storage" in setup
+    assert "ShouldOpenStorageMigration" in setup
     assert "LoadStringsFromFile" in setup
     assert "SaveStringsToUTF8FileWithoutBOM" in setup
     assert "{%USERPROFILE}" in setup

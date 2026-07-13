@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 1.1.2 - 2026-07-13
+
+Changed:
+- Upgrades with an existing vault now show a clear bilingual explanation page
+  instead of a disabled data-location picker.
+- After an upgrade, Setup opens Recovery Home directly on Storage management so
+  the user can migrate existing data with copy, integrity verification, and an
+  explicit old-copy removal choice.
+- Fresh installations still allow the recovery-data location to be selected in
+  Setup.
+
+Fixed:
+- The installer no longer presents an intentionally locked field as though the
+  folder picker were broken.
+- The local UI can safely open the Storage page whether it is already running or
+  is started by Setup.
+
 ## 1.1.1 - 2026-07-12
 
 Fixed:
