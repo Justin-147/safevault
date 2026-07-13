@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -8,11 +9,13 @@ from fastapi.testclient import TestClient
 
 from safevault.config import BackupConfig, SafeVaultConfig, load_config, save_config
 from safevault.db import connect
+from safevault.errors import SafeVaultError
 from safevault.protection import add_protected_root, remove_protected_root
 from safevault.sandbox import create_sandbox
 from safevault.snapshot import create_snapshot
 from safevault.ui.app import create_app
 from safevault.ui.auth import UI_COOKIE_NAME
+from safevault.ui.services import unprotect_from_ui
 
 TOKEN = "test-token"
 
@@ -203,6 +206,25 @@ def test_ui_can_preview_and_confirm_history_removal_without_typing_id(
     assert project.is_dir()
     assert (project / "tracked.txt").read_text(encoding="utf-8") == "tracked"
     assert _root_count() == 0
+
+
+def test_unprotect_database_error_is_reported_without_partial_delete(
+    sv_home: Path, project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    add_protected_root(project, "coding")
+    root_id = _root_id_for(project)
+
+    def broken_connect() -> sqlite3.Connection:
+        return sqlite3.connect(":memory:")
+
+    monkeypatch.setattr("safevault.ui.services.connect", broken_connect)
+    monkeypatch.setattr(
+        "safevault.ui.services.plan_unprotect_from_ui",
+        lambda _root_id: {"root_id": root_id, "root_path": str(project.resolve())},
+    )
+
+    with pytest.raises(SafeVaultError, match="删除历史失败，未删除任何数据"):
+        unprotect_from_ui(root_id, str(root_id))
 
 
 def test_ui_lists_and_deletes_only_managed_external_backups(

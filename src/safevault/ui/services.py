@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import time
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -657,26 +658,36 @@ def unprotect_from_ui(root_id: int, confirmation: str) -> dict[str, object]:
         raise SafeVaultError("type the root id or root path to confirm unprotect")
     conn = connect()
     try:
-        with conn:
-            conn.execute("DELETE FROM ai_change_sessions WHERE root_id = ?", (root_id,))
-            conn.execute("DELETE FROM change_batches WHERE root_id = ?", (root_id,))
-            conn.execute("DELETE FROM file_events WHERE root_id = ?", (root_id,))
-            conn.execute("DELETE FROM version_timeline WHERE root_id = ?", (root_id,))
-            conn.execute("DELETE FROM restore_points WHERE root_id = ?", (root_id,))
-            conn.execute("DELETE FROM protection_policies WHERE root_id = ?", (root_id,))
-            conn.execute("DELETE FROM events WHERE root_id = ?", (root_id,))
-            conn.execute(
-                """
-                DELETE FROM versions
-                WHERE file_id IN (SELECT id FROM files WHERE root_id = ?)
-                   OR snapshot_id IN (SELECT id FROM snapshots WHERE root_id = ?)
-                """,
-                (root_id, root_id),
-            )
-            conn.execute("DELETE FROM files WHERE root_id = ?", (root_id,))
-            conn.execute("DELETE FROM snapshots WHERE root_id = ?", (root_id,))
-            conn.execute("DELETE FROM sandboxes WHERE root_id = ?", (root_id,))
-            conn.execute("DELETE FROM roots WHERE id = ?", (root_id,))
+        conn.execute("PRAGMA busy_timeout = 15000")
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM ai_change_sessions WHERE root_id = ?", (root_id,))
+        conn.execute("DELETE FROM change_batches WHERE root_id = ?", (root_id,))
+        conn.execute("DELETE FROM file_events WHERE root_id = ?", (root_id,))
+        conn.execute("DELETE FROM version_timeline WHERE root_id = ?", (root_id,))
+        conn.execute("DELETE FROM restore_points WHERE root_id = ?", (root_id,))
+        conn.execute("DELETE FROM protection_policies WHERE root_id = ?", (root_id,))
+        conn.execute("DELETE FROM events WHERE root_id = ?", (root_id,))
+        conn.execute(
+            """
+            DELETE FROM versions
+            WHERE file_id IN (SELECT id FROM files WHERE root_id = ?)
+               OR snapshot_id IN (SELECT id FROM snapshots WHERE root_id = ?)
+            """,
+            (root_id, root_id),
+        )
+        conn.execute("DELETE FROM files WHERE root_id = ?", (root_id,))
+        conn.execute("DELETE FROM snapshots WHERE root_id = ?", (root_id,))
+        conn.execute("DELETE FROM sandboxes WHERE root_id = ?", (root_id,))
+        conn.execute("DELETE FROM roots WHERE id = ?", (root_id,))
+        conn.commit()
+    except sqlite3.Error as exc:
+        conn.rollback()
+        message = str(exc).casefold()
+        if "locked" in message or "busy" in message:
+            raise SafeVaultError(
+                "数据库正忙，未删除任何历史。请稍后重试；如果仍失败，请先停止后台保护。"
+            ) from exc
+        raise SafeVaultError(f"删除历史失败，未删除任何数据：{exc}") from exc
     finally:
         conn.close()
     return plan

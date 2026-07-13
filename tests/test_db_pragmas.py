@@ -22,4 +22,12 @@ def test_db_pragmas_and_indexes(sv_home) -> None:
         "idx_versions_content_hash",
         "idx_events_root_type_time",
         "idx_snapshots_root_time",
+        "idx_versions_snapshot_id",
+        "idx_file_events_file_id",
+        "idx_file_events_snapshot_id",
+        "idx_version_timeline_file_id",
+        "idx_version_timeline_version_id",
+        "idx_version_timeline_snapshot_id",
+        "idx_ai_change_sessions_before_snapshot_id",
+        "idx_ai_change_sessions_after_snapshot_id",
     } <= indexes

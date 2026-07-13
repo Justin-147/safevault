@@ -8,7 +8,7 @@ from safevault.errors import SafeVaultError
 from safevault.models import ProtectionPolicy, Root
 from safevault.paths import ensure_home_layout, get_db_path
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 def utc_now_iso() -> str:
@@ -166,6 +166,10 @@ def migrate(conn: sqlite3.Connection) -> None:
     if version < 5:
         migrate_to_v5(conn)
         set_user_version(conn, 5)
+        version = 5
+    if version < 6:
+        migrate_to_v6(conn)
+        set_user_version(conn, 6)
 
 
 def ensure_migrations_table(conn: sqlite3.Connection) -> None:
@@ -457,6 +461,33 @@ def migrate_to_v5(conn: sqlite3.Connection) -> None:
         """
     )
     record_migration(conn, 5)
+
+
+def migrate_to_v6(conn: sqlite3.Connection) -> None:
+    """Index child foreign keys used by large-root history removal."""
+    conn.executescript(
+        """
+        CREATE INDEX IF NOT EXISTS idx_versions_snapshot_id
+            ON versions(snapshot_id);
+        CREATE INDEX IF NOT EXISTS idx_change_batches_snapshot_id
+            ON change_batches(snapshot_id);
+        CREATE INDEX IF NOT EXISTS idx_file_events_file_id
+            ON file_events(file_id);
+        CREATE INDEX IF NOT EXISTS idx_file_events_snapshot_id
+            ON file_events(snapshot_id);
+        CREATE INDEX IF NOT EXISTS idx_version_timeline_file_id
+            ON version_timeline(file_id);
+        CREATE INDEX IF NOT EXISTS idx_version_timeline_version_id
+            ON version_timeline(version_id);
+        CREATE INDEX IF NOT EXISTS idx_version_timeline_snapshot_id
+            ON version_timeline(snapshot_id);
+        CREATE INDEX IF NOT EXISTS idx_ai_change_sessions_before_snapshot_id
+            ON ai_change_sessions(before_snapshot_id);
+        CREATE INDEX IF NOT EXISTS idx_ai_change_sessions_after_snapshot_id
+            ON ai_change_sessions(after_snapshot_id);
+        """
+    )
+    record_migration(conn, 6)
 
 
 def insert_ai_change_session(

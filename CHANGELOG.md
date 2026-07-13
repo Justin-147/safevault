@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 1.1.5 - 2026-07-13
+
+Fixed:
+- Removing history for a large protected folder no longer performs repeated
+  full-table scans for every version and file row.
+- History removal now obtains the SQLite write lock before starting and waits
+  briefly for active background writes instead of failing mid-request.
+- Database lock and deletion errors are shown as readable Recovery Home
+  messages; failed transactions are rolled back instead of returning a raw
+  Internal Server Error page.
+
+Performance:
+- Added indexes for all snapshot, file, and version foreign keys involved in
+  root removal. On a copy of a real vault with about 6,700 files and versions,
+  removal time fell from about 82 seconds to about 4 seconds.
+
 ## 1.1.4 - 2026-07-13
 
 Added:

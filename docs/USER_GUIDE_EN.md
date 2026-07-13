@@ -24,7 +24,7 @@ The advanced navigation uses plain-language labels:
 - **External Backup** copies recovery data to another location or imports a backup.
 
 The status strip also shows local object-store use against the configured
-storage budget. The v1.1.4 default target is 10 GB. Smart retention remains
+storage budget. The v1.1.5 default target is 10 GB. Smart retention remains
 planning/dry-run only, so SafeVault does not silently remove historical
 versions.
 

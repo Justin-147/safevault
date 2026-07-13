@@ -18,7 +18,7 @@ python -m safevault tray --check
 python - <<'PY'
 from safevault import __version__
 
-assert __version__ == "1.1.4"
+assert __version__ == "1.1.5"
 print("version ok")
 PY
 python - <<'PY'
