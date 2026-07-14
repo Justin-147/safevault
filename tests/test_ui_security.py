@@ -348,6 +348,7 @@ def test_cli_ui_host_security_and_test_token(
         calls["url"] = ui_url(session)
 
     monkeypatch.setattr(uvicorn, "run", fake_run)
+    monkeypatch.setattr("safevault.ui.session.ui_port_available", lambda host, port: True)
     local = runner.invoke(
         app,
         [
@@ -374,11 +375,35 @@ def test_ui_command_removes_session_after_shutdown(runner, sv_home: Path, monkey
     import uvicorn
 
     monkeypatch.setattr(uvicorn, "run", lambda app_obj, host, port: None)
+    monkeypatch.setattr("safevault.ui.session.ui_port_available", lambda host, port: True)
 
     result = runner.invoke(app, ["ui", "--test-token", "session-token"])
 
     assert result.exit_code == 0
     assert read_ui_session() is None
+
+
+def test_ui_command_does_not_replace_session_when_port_is_busy(
+    runner, sv_home: Path, monkeypatch
+) -> None:
+    stale = UiSession(
+        host="127.0.0.1",
+        port=8765,
+        token="stale-token",
+        started_at="2026-07-10T00:00:00+00:00",
+        pid=123,
+    )
+    from safevault.ui.session import write_ui_session
+
+    write_ui_session(stale)
+    monkeypatch.setattr("safevault.ui.session.ui_session_reachable", lambda item: False)
+    monkeypatch.setattr("safevault.ui.session.ui_port_available", lambda host, port: False)
+
+    result = runner.invoke(app, ["ui"])
+
+    assert result.exit_code == 1
+    assert "already in use" in result.output
+    assert read_ui_session() == stale
 
 
 def test_ui_command_reuses_existing_reachable_session(

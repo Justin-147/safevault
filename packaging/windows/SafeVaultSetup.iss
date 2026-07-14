@@ -1,5 +1,5 @@
 #define MyAppName "SafeVault"
-#define MyAppVersion "1.1.6"
+#define MyAppVersion "1.1.7"
 #define MyAppPublisher "SafeVault"
 #define MyAppExeName "safevault.exe"
 

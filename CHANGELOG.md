@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 1.1.7 - 2026-07-14
+
+Fixed:
+- Tray actions no longer open Recovery Home with a stale token after another UI
+  process fails to bind the default port.
+- A UI process checks that its requested port is available before replacing the
+  registered session, preserving the active session on bind conflicts.
+- When the registered session is stale and port 8765 is occupied, the tray
+  selects the next available local port instead of repeatedly launching a UI
+  process that cannot start.
+- The Recent Deleted tray action now opens `/deleted` instead of the home page.
+
 ## 1.1.6 - 2026-07-14
 
 Fixed:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import signal
+import socket
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ from pathlib import Path
 
 from safevault.atomic import atomic_write_bytes
 from safevault.db import utc_now_iso
+from safevault.errors import SafeVaultError
 from safevault.paths import ensure_home_layout, get_safevault_home
 
 
@@ -85,9 +87,30 @@ def clear_ui_session(session: UiSession | None = None) -> None:
 
 
 def ui_url(session: UiSession, *, path: str = "/") -> str:
-    if path not in {"/", "/storage"}:
+    if path not in {"/", "/storage", "/deleted"}:
         raise ValueError("unsupported SafeVault UI path")
     return f"http://{session.host}:{session.port}{path}?token={session.token}"
+
+
+def ui_port_available(host: str, port: int) -> bool:
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    try:
+        with socket.socket(family, socket.SOCK_STREAM) as listener:
+            if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+                listener.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            listener.bind((host, port))
+    except OSError:
+        return False
+    return True
+
+
+def find_available_ui_port(
+    host: str = "127.0.0.1", *, preferred: int = 8765, attempts: int = 20
+) -> int:
+    for port in range(preferred, min(preferred + attempts, 65536)):
+        if ui_port_available(host, port):
+            return port
+    raise SafeVaultError("No available local port found for SafeVault UI")
 
 
 def ui_session_reachable(session: UiSession, *, timeout: float = 0.5) -> bool:

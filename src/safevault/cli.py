@@ -1183,6 +1183,7 @@ def ui_command(
             clear_ui_session,
             create_ui_session,
             read_ui_session,
+            ui_port_available,
             ui_session_reachable,
             ui_url,
             write_ui_session,
@@ -1210,6 +1211,11 @@ def ui_command(
         if open_browser:
             webbrowser.open(url)
         return
+    if not ui_port_available(host, port):
+        raise SafeVaultError(
+            f"SafeVault UI port {host}:{port} is already in use; "
+            "use --port to choose another local port"
+        )
     if existing is not None:
         clear_ui_session(existing)
 

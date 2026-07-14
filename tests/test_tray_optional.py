@@ -34,6 +34,24 @@ def test_tray_open_ui_uses_token_url(monkeypatch, sv_home) -> None:
     assert opened == ["http://127.0.0.1:8765/?token=abc"]
 
 
+def test_tray_recent_deleted_uses_deleted_path(monkeypatch, sv_home) -> None:
+    opened = []
+    session = UiSession(
+        host="127.0.0.1",
+        port=8765,
+        token="abc",
+        started_at="2026-07-08T00:00:00+00:00",
+        pid=123,
+    )
+    monkeypatch.setattr("safevault.tray.read_ui_session", lambda: session)
+    monkeypatch.setattr("safevault.tray.ui_session_reachable", lambda item, timeout=0.5: True)
+    monkeypatch.setattr("safevault.tray.webbrowser.open", opened.append)
+
+    open_safevault_ui(path="/deleted")
+
+    assert opened == ["http://127.0.0.1:8765/deleted?token=abc"]
+
+
 def test_tray_does_not_open_bare_url(monkeypatch, sv_home) -> None:
     opened = []
     session = UiSession(
@@ -87,11 +105,12 @@ def test_ui_session_ignores_stale_unreachable_session(monkeypatch, sv_home) -> N
     monkeypatch.setattr("safevault.tray.ui_session_reachable", fake_reachable)
     monkeypatch.setattr("safevault.tray.webbrowser.open", opened.append)
     monkeypatch.setattr("safevault.tray._spawn_safevault", spawned.append)
+    monkeypatch.setattr("safevault.tray.find_available_ui_port", lambda: 8766)
     monkeypatch.setattr("safevault.tray.time.sleep", lambda seconds: None)
 
     open_safevault_ui()
 
-    assert spawned == [["ui"]]
+    assert spawned == [["ui", "--port", "8766"]]
     assert opened == ["http://127.0.0.1:8765/?token=fresh"]
 
 

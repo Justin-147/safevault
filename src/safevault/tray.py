@@ -13,6 +13,7 @@ from safevault.processes import spawn_safevault
 from safevault.protection import list_protection, pause_protected_root, resume_protected_root
 from safevault.snapshot import create_snapshot
 from safevault.ui.session import (
+    find_available_ui_port,
     read_ui_session,
     request_ui_stop,
     ui_session_reachable,
@@ -45,7 +46,10 @@ def run_tray(*, open_ui: bool = False, check: bool = False) -> None:
         "SafeVault",
         menu=pystray.Menu(
             pystray.MenuItem("Open SafeVault", lambda _icon, _item: open_safevault_ui()),
-            pystray.MenuItem("Recent Deleted", lambda _icon, _item: open_safevault_ui()),
+            pystray.MenuItem(
+                "Recent Deleted",
+                lambda _icon, _item: open_safevault_ui(path="/deleted"),
+            ),
             pystray.MenuItem("Run Snapshot Now", lambda _icon, _item: snapshot_all_roots()),
             pystray.MenuItem("Run Verify", lambda _icon, _item: run_verify(deep=False)),
             pystray.MenuItem("Backup Now", lambda _icon, _item: run_backup()),
@@ -60,17 +64,18 @@ def run_tray(*, open_ui: bool = False, check: bool = False) -> None:
     icon.run()
 
 
-def open_safevault_ui() -> None:
+def open_safevault_ui(*, path: str = "/") -> None:
     session = read_ui_session()
     if session is not None and ui_session_reachable(session):
-        webbrowser.open(ui_url(session))
+        webbrowser.open(ui_url(session, path=path))
         return
-    _spawn_safevault(["ui"])
+    port = find_available_ui_port()
+    _spawn_safevault(["ui", "--port", str(port)])
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline:
         session = read_ui_session()
         if session is not None:
-            url = ui_url(session)
+            url = ui_url(session, path=path)
             if ui_session_reachable(session, timeout=0.5):
                 webbrowser.open(url)
                 return
