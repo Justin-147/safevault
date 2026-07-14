@@ -1,10 +1,25 @@
 # SafeVault 中文说明
 
+[![最新版本](https://img.shields.io/github/v/release/Justin-147/safevault?label=release)](https://github.com/Justin-147/safevault/releases/latest)
+[![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](https://github.com/Justin-147/safevault/releases/latest/download/SafeVaultSetup.exe)
+[![许可证：MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **[English](README.md) | [中文安装指南](docs/INSTALL_ZH.md) | [中文用户指南](docs/USER_GUIDE_ZH.md) | [文档中心](docs/README.md)**
 
-SafeVault 是一款本地优先的文件保护和恢复工具。选择需要保护的文件夹后，它会在
-后台记录可恢复版本，在恢复首页显示最近删除和修改，并把高风险 AI 编程操作放到
-项目副本中执行。
+![SafeVault——本地优先的文件保护与恢复工具](docs/assets/social-preview.jpg)
+
+**SafeVault 是一款本地优先的 Windows 文件保护和恢复工具。** 选择需要保护的文件夹后，
+它会在后台记录可恢复版本，在恢复首页显示最近删除和修改，并把高风险 AI 编程操作放到
+项目副本中执行。受保护内容只保存在你控制的本地存储中。
+
+**[下载 Windows 安装程序](https://github.com/Justin-147/safevault/releases/latest/download/SafeVaultSetup.exe)** · [查看最新版本](https://github.com/Justin-147/safevault/releases/latest) · [阅读安装指南](docs/INSTALL_ZH.md)
+
+## 为什么选择 SafeVault
+
+- **恢复日常误操作：** 从本地浏览器界面恢复最近删除或覆盖的文件。
+- **数据由自己控制：** 使用 BLAKE3 完整性校验和 SQLite 元数据在本地保存版本。
+- **Windows 一次安装：** 安装器可选启用后台保护和托盘开机启动。
+- **降低 AI 编程风险：** 在项目副本中运行支持的工作流，检查后再应用经过验证的修改。
 
 ## 从这里开始
 

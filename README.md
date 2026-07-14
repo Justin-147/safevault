@@ -3,13 +3,31 @@
 [![CI](https://github.com/Justin-147/safevault/actions/workflows/ci.yml/badge.svg)](https://github.com/Justin-147/safevault/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Justin-147/safevault?include_prereleases&label=release)](https://github.com/Justin-147/safevault/releases)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
+[![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D4.svg)](https://github.com/Justin-147/safevault/releases/latest/download/SafeVaultSetup.exe)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **[中文说明](README.zh-CN.md) | [Documentation](docs/README.md)**
 
-SafeVault is a local-first file protection and recovery tool. It continuously
-protects selected folders, keeps recoverable file versions, surfaces recent
-deletions in a local Recovery Home, and isolates risky AI coding changes in a
-disposable project copy.
+![SafeVault — local-first file protection and recovery](docs/assets/social-preview.jpg)
+
+**SafeVault is a local-first Windows file protection and recovery tool.** It
+continuously protects selected folders, keeps recoverable file versions,
+surfaces recent deletions in a local Recovery Home, and isolates risky AI
+coding changes in a disposable project copy. Your protected content stays on
+storage you control.
+
+**[Download SafeVault for Windows](https://github.com/Justin-147/safevault/releases/latest/download/SafeVaultSetup.exe)** · [View the latest release](https://github.com/Justin-147/safevault/releases/latest) · [Read the install guide](docs/INSTALL_EN.md)
+
+## Why SafeVault
+
+- **Recover everyday mistakes:** restore recently deleted or overwritten files
+  from a local browser interface.
+- **Keep control of your data:** store versions locally with BLAKE3 integrity
+  verification and SQLite metadata.
+- **Install once on Windows:** optional background protection and tray startup
+  are included in the installer.
+- **Use AI coding tools more safely:** run supported workflows in a disposable
+  project copy, then review and apply validated changes.
 
 ## Start Here
 

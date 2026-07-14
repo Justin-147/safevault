@@ -1,0 +1,60 @@
+name: Bug report
+description: Report a reproducible SafeVault problem
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Do not include secrets, private file contents, or security vulnerabilities.
+  - type: input
+    id: version
+    attributes:
+      label: SafeVault version
+      description: Run `safevault --version` or check the installed release.
+      placeholder: 1.1.7
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation method
+      options:
+        - Windows installer
+        - Python package / source checkout
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the actual result and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Remove tokens, usernames, private paths, and file contents before pasting logs.
+      render: shell
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Privacy and safety check
+      options:
+        - label: I removed secrets, access tokens, private file contents, and sensitive paths.
+          required: true
+        - label: This is not a security vulnerability. Security reports belong on the Security page.
+          required: true
