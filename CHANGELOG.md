@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 1.1.8 - 2026-07-14
+
+Fixed:
+- Tray actions now use a lightweight authenticated health endpoint instead of
+  repeatedly rendering the database-backed Recovery Home while waiting for the
+  local UI to start.
+- `Open SafeVault` and `Recent Deleted` no longer create additional local UI
+  processes when a slow dashboard request exceeds the readiness timeout.
+- Windows falls back to the system default URL handler when Python's browser
+  launcher reports that it could not open the requested SafeVault page.
+
+Safety:
+- The new health endpoint still requires the per-session UI token and does not
+  expose vault status, paths, or file metadata.
+
 ## 1.1.7 - 2026-07-14
 
 Fixed:
