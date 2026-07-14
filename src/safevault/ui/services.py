@@ -41,6 +41,11 @@ from safevault.prune import prune_unreferenced_objects
 from safevault.recent import list_recent_deleted, list_recent_modified, search_files
 from safevault.restore import restore_file
 from safevault.retention import RetentionPlan, build_retention_plan
+from safevault.retention_cleanup import (
+    AUTO_CLEANUP_CONFIRMATION,
+    configure_retention,
+    preview_retention_cleanup,
+)
 from safevault.sandbox import apply_sandbox, get_sandbox, list_sandboxes
 from safevault.snapshot import create_snapshot
 from safevault.startup import install_user_startup, uninstall_user_startup
@@ -315,6 +320,8 @@ def storage_for_ui() -> dict[str, object]:
     status = get_storage_status()
     analysis = analyze_storage(largest_limit=15)
     migration = read_migration_state()
+    retention = load_config().retention
+    cleanup_preview = preview_retention_cleanup(keep_days=retention.keep_days)
     return {
         "status": status,
         "object_store_display": _format_bytes(status.object_store_bytes),
@@ -339,11 +346,30 @@ def storage_for_ui() -> dict[str, object]:
         ],
         "migration": migration,
         "migration_confirmation": MIGRATION_CONFIRMATION,
+        "retention": retention,
+        "cleanup_confirmation": AUTO_CLEANUP_CONFIRMATION,
+        "cleanup_preview_versions": len(cleanup_preview.plan.candidate_versions),
+        "cleanup_preview_snapshots": len(cleanup_preview.plan.candidate_snapshots),
+        "cleanup_preview_objects": cleanup_preview.reclaimable_objects,
+        "cleanup_preview_display": _format_bytes(cleanup_preview.reclaimable_bytes),
+        "last_cleanup_reclaimed_display": _format_bytes(
+            retention.last_cleanup_reclaimed_bytes
+        ),
     }
 
 
 def set_storage_budget_from_ui(gigabytes: int) -> None:
     set_storage_budget(gigabytes)
+
+
+def configure_retention_from_ui(
+    *, keep_days: int, auto_cleanup_enabled: bool, confirmation: str
+) -> None:
+    configure_retention(
+        keep_days=keep_days,
+        auto_cleanup_enabled=auto_cleanup_enabled,
+        confirmation=confirmation,
+    )
 
 
 def start_storage_migration_from_ui(
@@ -1003,7 +1029,7 @@ def sandbox_clean_from_ui(
     }
 
 
-def retention_plan_for_ui(keep_days: int = 90) -> RetentionPlan:
+def retention_plan_for_ui(keep_days: int = 7) -> RetentionPlan:
     return build_retention_plan(keep_days=keep_days)
 
 

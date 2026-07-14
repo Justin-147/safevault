@@ -40,6 +40,21 @@ def test_scheduled_snapshots_do_not_repeat_inside_interval(runner, sv_home, proj
     assert batch_count == 2
 
 
+def test_scheduled_tasks_include_retention_cleanup(monkeypatch, sv_home) -> None:
+    calls = []
+    monkeypatch.setattr("safevault.daemon._run_due_snapshots", lambda now: calls.append("snap"))
+    monkeypatch.setattr("safevault.daemon.run_due_backup", lambda now: calls.append("backup"))
+    monkeypatch.setattr(
+        "safevault.daemon.run_due_retention_cleanup",
+        lambda now: calls.append("retention"),
+    )
+    monkeypatch.setattr("safevault.daemon._run_idle_verify", lambda now: calls.append("verify"))
+
+    run_scheduled_tasks(now=datetime(2026, 7, 7, 12, 0, tzinfo=UTC))
+
+    assert calls == ["snap", "backup", "retention", "verify"]
+
+
 def test_bulk_delete_warning_writes_notification(runner, sv_home, project) -> None:
     add_protected_root(project, "coding")
     result = runner.invoke(app, ["daemon", "run", "--test-once"])

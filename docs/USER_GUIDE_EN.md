@@ -24,9 +24,8 @@ The advanced navigation uses plain-language labels:
 - **External Backup** copies recovery data to another location or imports a backup.
 
 The status strip also shows local object-store use against the configured
-storage budget. The v1.1.7 default target is 10 GB. Smart retention remains
-planning/dry-run only, so SafeVault does not silently remove historical
-versions.
+storage budget. The default target is 10 GB and the default history window is
+7 days. Automatic cleanup stays off until explicitly enabled from Storage.
 
 ## Manage Storage
 
@@ -37,6 +36,12 @@ per file, per-root estimates, and the largest tracked files.
 Changing the target changes warnings only. If the minimum already exceeds 10
 GB, narrow protected folders and avoid replaceable media, installers, models,
 datasets, and generated outputs. Never delete object-store files manually.
+
+**Automatic history cleanup** shows the versions, snapshots, objects, and space
+eligible for cleanup. Enabling it or shortening the window requires typing
+`ENABLE AUTO CLEANUP`. Once enabled, the daemon runs it at most daily and removes
+only superseded history outside the window. Latest restorable versions,
+important restore points, and AI change restore points remain protected.
 
 To move storage, choose an empty destination. SafeVault stops background
 protection, checks free space, copies the database and objects, verifies them,

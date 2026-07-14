@@ -140,8 +140,9 @@ whole-file versions still consume object storage.
   containment and does not isolate credentials, the network, or the user account.
 - The watcher is best-effort; completed versions are the recovery source of
   truth.
-- The 10 GB target is a soft budget. Smart retention remains planning/dry-run
-  only in v1.1.8 and does not silently remove history.
+- The 10 GB target is a soft budget. The default history window is 7 days, but
+  automatic cleanup remains off until it is explicitly enabled from Storage
+  with `ENABLE AUTO CLEANUP`.
 - Local history does not protect against disk loss. Keep exports on an external
   disk, NAS, or another machine.
 
@@ -160,5 +161,5 @@ python -m safevault --help
 bash scripts/release_check.sh
 ```
 
-SafeVault 1.1.8 requires Python 3.12 or later. See [CHANGELOG.md](CHANGELOG.md)
-and [v1.1.8 release notes](docs/releases/v1.1.8.md) for release details.
+SafeVault 1.1.9 requires Python 3.12 or later. See [CHANGELOG.md](CHANGELOG.md)
+and [v1.1.9 release notes](docs/releases/v1.1.9.md) for release details.

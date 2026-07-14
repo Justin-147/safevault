@@ -27,6 +27,27 @@
 </section>
 
 <section class="panel">
+  <h2>历史版本自动清理</h2>
+  <p>默认保留最近 7 天。自动清理只删除已被新版本取代的旧历史；每个文件最后一个可恢复版本、重要恢复点和 AI 变更恢复点始终保留。</p>
+  <form method="post" action="/storage/retention">
+    <label>历史版本保留天数 <input name="keep_days" type="number" min="1" max="3650" step="1" value="{{ storage.retention.keep_days }}" required></label>
+    <label><input name="auto_cleanup_enabled" type="checkbox" value="true" {% if storage.retention.auto_cleanup_enabled %}checked{% endif %}> 启用每日自动清理</label>
+    <label>启用或缩短保留期确认词 <input name="confirmation" placeholder="{{ storage.cleanup_confirmation }}"></label>
+    <p class="warning">首次启用自动清理或缩短保留期时，必须输入 <code>{{ storage.cleanup_confirmation }}</code>。关闭自动清理不需要确认词。</p>
+    <button type="submit">保存自动清理设置</button>
+  </form>
+  <h3>当前清理预览</h3>
+  <p>超过 {{ storage.retention.keep_days }} 天且可安全清理：{{ storage.cleanup_preview_versions }} 个历史版本、{{ storage.cleanup_preview_snapshots }} 个完整旧快照、{{ storage.cleanup_preview_objects }} 个无其他引用的对象，预计释放 {{ storage.cleanup_preview_display }}。</p>
+  <h3>最近自动清理</h3>
+  {% if storage.retention.last_cleanup_at %}
+  <p>状态：{{ storage.retention.last_cleanup_status }}；时间：<time datetime="{{ storage.retention.last_cleanup_at }}" data-local-time>{{ storage.retention.last_cleanup_at }}</time>；删除历史版本：{{ storage.retention.last_cleanup_deleted_versions }}；释放空间：{{ storage.last_cleanup_reclaimed_display }}。</p>
+  {% if storage.retention.last_cleanup_error %}<p class="warning">{{ storage.retention.last_cleanup_error }}</p>{% endif %}
+  {% else %}
+  <p class="muted">尚未执行自动清理。</p>
+  {% endif %}
+</section>
+
+<section class="panel">
   <h2>迁移数据位置</h2>
   <p>迁移会先停止后台保护，把数据库和对象完整复制到新位置，逐个校验对象，再切换位置。关闭浏览器不会中断后台迁移。</p>
   <form method="post" action="/storage/migrate">

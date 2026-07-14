@@ -45,6 +45,35 @@ def test_storage_budget_can_be_updated_from_ui(sv_home: Path) -> None:
     assert load_config().retention.max_vault_size_gb == 12
 
 
+def test_storage_retention_ui_requires_confirmation_and_enables_cleanup(
+    sv_home: Path,
+) -> None:
+    _complete_onboarding()
+
+    with TestClient(create_app(token=TOKEN)) as client:
+        client.get("/storage", params={"token": TOKEN})
+        rejected = client.post(
+            "/storage/retention",
+            data={"keep_days": "7", "auto_cleanup_enabled": "true"},
+        )
+        accepted = client.post(
+            "/storage/retention",
+            data={
+                "keep_days": "7",
+                "auto_cleanup_enabled": "true",
+                "confirmation": "ENABLE AUTO CLEANUP",
+            },
+        )
+
+    assert rejected.status_code == 200
+    assert "ENABLE AUTO CLEANUP" in rejected.text
+    assert accepted.status_code == 200
+    assert "自动清理已启用" in accepted.text
+    config = load_config()
+    assert config.retention.keep_days == 7
+    assert config.retention.auto_cleanup_enabled is True
+
+
 def test_storage_migration_ui_requires_confirmation_before_removing_source(
     sv_home: Path, tmp_path: Path
 ) -> None:

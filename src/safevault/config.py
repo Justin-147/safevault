@@ -72,8 +72,14 @@ class BackupConfig:
 @dataclass(frozen=True)
 class RetentionConfig:
     max_vault_size_gb: int = 10
-    keep_days: int = 90
+    keep_days: int = 7
     conservative_prune_only: bool = True
+    auto_cleanup_enabled: bool = False
+    last_cleanup_at: str | None = None
+    last_cleanup_status: str = "never"
+    last_cleanup_deleted_versions: int = 0
+    last_cleanup_reclaimed_bytes: int = 0
+    last_cleanup_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -100,6 +106,12 @@ class SafeVaultConfig:
         backup = data.get("backup", {})
         retention = data.get("retention", {})
         ui = data.get("ui", {})
+        retention_keep_days: object = retention.get("keep_days", 7)
+        if (
+            "auto_cleanup_enabled" not in retention
+            and str(retention_keep_days) == "90"
+        ):
+            retention_keep_days = 7
         return cls(
             app=AppConfig(
                 onboarding_completed=bool(app.get("onboarding_completed", False)),
@@ -163,10 +175,22 @@ class SafeVaultConfig:
                     retention.get("max_vault_size_gb", 10),
                     "retention.max_vault_size_gb",
                 ),
-                keep_days=_positive_int(retention.get("keep_days", 90), "retention.keep_days"),
+                keep_days=_positive_int(retention_keep_days, "retention.keep_days"),
                 conservative_prune_only=bool(
                     retention.get("conservative_prune_only", True)
                 ),
+                auto_cleanup_enabled=bool(retention.get("auto_cleanup_enabled", False)),
+                last_cleanup_at=_optional_text(retention.get("last_cleanup_at")),
+                last_cleanup_status=str(retention.get("last_cleanup_status", "never")),
+                last_cleanup_deleted_versions=_nonnegative_int(
+                    retention.get("last_cleanup_deleted_versions", 0),
+                    "retention.last_cleanup_deleted_versions",
+                ),
+                last_cleanup_reclaimed_bytes=_nonnegative_int(
+                    retention.get("last_cleanup_reclaimed_bytes", 0),
+                    "retention.last_cleanup_reclaimed_bytes",
+                ),
+                last_cleanup_error=_optional_text(retention.get("last_cleanup_error")),
             ),
             ui=UiConfig(
                 host=str(ui.get("host", "127.0.0.1")),
@@ -215,6 +239,14 @@ class SafeVaultConfig:
                 "max_vault_size_gb": self.retention.max_vault_size_gb,
                 "keep_days": self.retention.keep_days,
                 "conservative_prune_only": self.retention.conservative_prune_only,
+                "auto_cleanup_enabled": self.retention.auto_cleanup_enabled,
+                "last_cleanup_at": self.retention.last_cleanup_at,
+                "last_cleanup_status": self.retention.last_cleanup_status,
+                "last_cleanup_deleted_versions": (
+                    self.retention.last_cleanup_deleted_versions
+                ),
+                "last_cleanup_reclaimed_bytes": self.retention.last_cleanup_reclaimed_bytes,
+                "last_cleanup_error": self.retention.last_cleanup_error,
             },
             "ui": {
                 "host": self.ui.host,
@@ -304,6 +336,13 @@ def _normalize_optional_path(value: object) -> str | None:
     return str(Path(text).expanduser().resolve(strict=False))
 
 
+def _optional_text(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _backup_schedule(value: object) -> BackupSchedule:
     schedule = str(value)
     if schedule not in {"manual", "daily", "weekly"}:
@@ -327,6 +366,13 @@ def _positive_int(value: object, name: str) -> int:
     number = int(str(value))
     if number <= 0:
         raise SafeVaultError(f"{name} must be positive")
+    return number
+
+
+def _nonnegative_int(value: object, name: str) -> int:
+    number = int(str(value))
+    if number < 0:
+        raise SafeVaultError(f"{name} must not be negative")
     return number
 
 

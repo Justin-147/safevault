@@ -1237,7 +1237,7 @@ def ui_command(
 @app.command(name="retention-plan")
 @handle_errors
 def retention_plan(
-    keep_days: int = typer.Option(90, "--keep-days"),
+    keep_days: int = typer.Option(7, "--keep-days"),
     smart: bool = typer.Option(False, "--smart"),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
