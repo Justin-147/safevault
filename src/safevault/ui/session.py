@@ -92,6 +92,10 @@ def ui_url(session: UiSession, *, path: str = "/") -> str:
     return f"http://{session.host}:{session.port}{path}?token={session.token}"
 
 
+def ui_health_url(session: UiSession) -> str:
+    return f"http://{session.host}:{session.port}/health?token={session.token}"
+
+
 def ui_port_available(host: str, port: int) -> bool:
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
     try:
@@ -115,7 +119,7 @@ def find_available_ui_port(
 
 def ui_session_reachable(session: UiSession, *, timeout: float = 0.5) -> bool:
     try:
-        with urllib.request.urlopen(ui_url(session), timeout=timeout) as response:
+        with urllib.request.urlopen(ui_health_url(session), timeout=timeout) as response:
             return response.status < 500
     except (OSError, urllib.error.URLError):
         return False

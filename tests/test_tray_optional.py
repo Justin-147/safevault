@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from safevault.cli import app
 from safevault.tray import open_safevault_ui, quit_safevault, tray_available
-from safevault.ui.session import UiSession
+from safevault.ui.session import UiSession, ui_session_reachable
 
 
 def test_tray_check_is_safe_when_optional_dependencies_are_missing(runner, sv_home) -> None:
@@ -145,3 +145,39 @@ def test_tray_child_process_uses_shared_launcher(monkeypatch, sv_home) -> None:
         (["daemon", "run"], "daemon"),
         (["ui"], "ui"),
     ]
+
+
+def test_ui_reachability_uses_lightweight_health_endpoint(monkeypatch, sv_home) -> None:
+    requested = []
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+    def fake_urlopen(url, *, timeout):
+        requested.append((url, timeout))
+        return FakeResponse()
+
+    session = UiSession("127.0.0.1", 8765, "secret", "2026-07-08T00:00:00+00:00", 123)
+    monkeypatch.setattr("safevault.ui.session.urllib.request.urlopen", fake_urlopen)
+
+    assert ui_session_reachable(session, timeout=0.25) is True
+    assert requested == [("http://127.0.0.1:8765/health?token=secret", 0.25)]
+
+
+def test_tray_browser_open_falls_back_to_windows_default(monkeypatch, sv_home) -> None:
+    opened = []
+    monkeypatch.setattr("safevault.tray.webbrowser.open", lambda url: False)
+    monkeypatch.setattr("safevault.tray.sys.platform", "win32")
+    monkeypatch.setattr("safevault.tray.os.startfile", opened.append, raising=False)
+
+    from safevault.tray import _open_browser_url
+
+    _open_browser_url("http://127.0.0.1:8765/?token=secret")
+
+    assert opened == ["http://127.0.0.1:8765/?token=secret"]
