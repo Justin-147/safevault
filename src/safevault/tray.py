@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import sys
 import time
 import webbrowser
 from importlib import import_module
@@ -67,7 +69,7 @@ def run_tray(*, open_ui: bool = False, check: bool = False) -> None:
 def open_safevault_ui(*, path: str = "/") -> None:
     session = read_ui_session()
     if session is not None and ui_session_reachable(session):
-        webbrowser.open(ui_url(session, path=path))
+        _open_browser_url(ui_url(session, path=path))
         return
     port = find_available_ui_port()
     _spawn_safevault(["ui", "--port", str(port)])
@@ -77,10 +79,24 @@ def open_safevault_ui(*, path: str = "/") -> None:
         if session is not None:
             url = ui_url(session, path=path)
             if ui_session_reachable(session, timeout=0.5):
-                webbrowser.open(url)
+                _open_browser_url(url)
                 return
         time.sleep(0.2)
     raise SafeVaultError("SafeVault UI session did not become available")
+
+
+def _open_browser_url(url: str) -> None:
+    opened = webbrowser.open(url)
+    if opened is not False:
+        return
+    startfile = getattr(os, "startfile", None)
+    if sys.platform.startswith("win") and callable(startfile):
+        try:
+            startfile(url)
+            return
+        except OSError as exc:
+            raise SafeVaultError("Could not open the SafeVault UI in a browser") from exc
+    raise SafeVaultError("Could not open the SafeVault UI in a browser")
 
 
 def snapshot_all_roots() -> None:

@@ -106,6 +106,15 @@ def test_favicon_is_intentionally_empty_instead_of_404(sv_home: Path) -> None:
     assert response.status_code == 204
 
 
+def test_health_check_is_lightweight_and_token_protected(sv_home: Path) -> None:
+    with TestClient(create_app(token=TOKEN)) as client:
+        assert client.get("/health").status_code == 403
+        response = client.get("/health", params={"token": TOKEN})
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
 def test_ui_post_requires_token(sv_home: Path, project: Path) -> None:
     with TestClient(create_app(token=TOKEN)) as client:
         response = client.post(
