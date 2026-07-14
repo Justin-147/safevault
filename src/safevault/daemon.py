@@ -31,6 +31,7 @@ from safevault.protection import (
     policy_is_watchable,
     root_safety_issue,
 )
+from safevault.retention_cleanup import run_due_retention_cleanup
 from safevault.snapshot import create_snapshot, relative_path
 from safevault.verify import run_verify
 from safevault.watcher import SafeVaultEventHandler
@@ -529,6 +530,7 @@ def run_scheduled_tasks(*, now: datetime | None = None) -> None:
     current = now or datetime.now(UTC)
     _run_due_snapshots(current)
     run_due_backup(now=current)
+    run_due_retention_cleanup(now=current)
     _run_idle_verify(current)
 
 

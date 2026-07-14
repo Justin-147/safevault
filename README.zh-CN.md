@@ -129,7 +129,8 @@ Recovery Home 的“存储”页面可以查看真实占用、修改空间目标
 - 无法恢复从未保存过的文件，也无法保证恢复 SSD TRIM 后的磁盘块。
 - `safevault run` 防止命令直接改动原项目，但不是恶意代码沙箱。
 - watcher 是尽力而为机制，已经完成的版本才是恢复依据。
-- v1.1.8 的 10GB 目标是软预算，智能保留仍只做规划和 dry-run，不会静默删除历史版本。
+- 10GB 目标是软预算。默认历史保留期为 7 天，但自动清理默认关闭；只有在“存储”
+  页面输入 `ENABLE AUTO CLEANUP` 明确启用后才会删除已被新版本取代的旧历史。
 - 本地对象库无法防止整块磁盘损坏，应把导出备份放到其他设备。
 
 ## 文档导航
@@ -147,5 +148,5 @@ python -m safevault --help
 bash scripts/release_check.sh
 ```
 
-当前稳定版本为 `1.1.8`。版本变化见 [CHANGELOG.md](CHANGELOG.md) 和
-[v1.1.8 发布说明](docs/releases/v1.1.8.md)。
+当前稳定版本为 `1.1.9`。版本变化见 [CHANGELOG.md](CHANGELOG.md) 和
+[v1.1.9 发布说明](docs/releases/v1.1.9.md)。

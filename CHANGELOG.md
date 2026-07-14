@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## 1.1.9 - 2026-07-14
+
+Added:
+- Recovery Home Storage now provides a seven-day retention setting, an explicit
+  automatic-cleanup opt-in, a safety confirmation, a cleanup preview, and the
+  latest cleanup result.
+- The daemon can run authorized retention cleanup at most once per day.
+
+Safety:
+- Automatic cleanup is disabled until the user explicitly enables it with
+  `ENABLE AUTO CLEANUP`.
+- Cleanup removes only old superseded versions. It preserves each file's latest
+  restorable content, deleted-file recovery content, important restore points,
+  AI change restore points, and all history inside the configured window.
+- Object files are removed only after their final database reference is deleted;
+  symlinked or non-regular object paths are skipped.
+
+Changed:
+- The default retention window is seven days. Existing untouched 90-day
+  defaults migrate to seven days without enabling deletion automatically.
+
 ## 1.1.8 - 2026-07-14
 
 Fixed:

@@ -266,6 +266,35 @@ def build_router() -> APIRouter:
             error=error,
         )
 
+    @router.post("/storage/retention", response_class=HTMLResponse)
+    def storage_retention(
+        request: Request,
+        keep_days: int = Form(...),
+        auto_cleanup_enabled: bool = Form(False),
+        confirmation: str = Form(""),
+        token: str = Depends(require_token),
+    ) -> HTMLResponse:
+        message = None
+        error = None
+        try:
+            services.configure_retention_from_ui(
+                keep_days=keep_days,
+                auto_cleanup_enabled=auto_cleanup_enabled,
+                confirmation=confirmation,
+            )
+            state = "已启用" if auto_cleanup_enabled else "已关闭"
+            message = f"自动清理{state}；历史版本保留 {keep_days} 天。"
+        except SafeVaultError as exc:
+            error = _error_message(exc)
+        return _render(
+            request,
+            "storage.html",
+            token,
+            storage=services.storage_for_ui(),
+            message=message,
+            error=error,
+        )
+
     @router.get("/roots", response_class=HTMLResponse)
     def roots_page(request: Request, token: str = Depends(require_token)) -> HTMLResponse:
         return _render(

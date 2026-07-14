@@ -34,6 +34,10 @@ Sandboxes 页面列出 sandbox 和 diff 计数。Detail 页面可以 dry-run、a
 
 Maintenance 页面提供 doctor、verify、prune dry-run/confirm、sandbox-clean dry-run/confirm 和 retention-plan。prune 会删除未引用对象，所以确认执行必须输入 `PRUNE`。sandbox clean 会删除 applied sandbox 目录，所以确认执行必须输入 `CLEAN SANDBOXES`。
 
+“存储”页面提供历史版本自动清理设置。默认保留 7 天且自动清理关闭；首次启用或缩短
+保留期必须输入 `ENABLE AUTO CLEANUP`。页面会在保存前显示候选版本、快照、对象和
+预计释放空间，并显示最近一次后台清理结果。
+
 ## 7. Export/Import 页面
 
 Export 默认深度校验；skip verify 不推荐，必须输入 `SKIP VERIFY`。覆盖已有 export 文件必须输入 `OVERWRITE EXPORT`。Import 默认 dry-run。默认表单会验证 archive，但不会写入目标 SAFEVAULT_HOME。要真正导入，需要取消 dry-run、勾选 confirm 并输入 `IMPORT`；overwrite 需要输入 `OVERWRITE`。即使勾选 confirm，只要 dry-run 仍开启，就不会写入目标 SAFEVAULT_HOME。
